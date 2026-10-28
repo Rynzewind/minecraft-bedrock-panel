@@ -165,17 +165,26 @@ func (s *Store) Set(id, raw string) error {
 	return s.SaveRecord(id, r)
 }
 func (s *Store) MarkChecked(id, state, notes string) error {
-	rows, e := s.ListRecords()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, e := s.load()
 	if e != nil {
 		return e
 	}
 	r := rows[id]
 	r.LastChecked = time.Now().UTC()
 	r.CheckState = state
-	if notes != "" {
-		r.Notes = notes
+	r.Notes = notes
+	r, e = normalizeSource(r)
+	if e != nil {
+		return e
 	}
-	return s.SaveRecord(id, r)
+	rows[id] = r
+	b, e := json.MarshalIndent(sourceDisk{Version: 2, Sources: rows}, "", "  ")
+	if e != nil {
+		return e
+	}
+	return atomicWrite(s.path, b)
 }
 func atomicWrite(path string, b []byte) error {
 	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
@@ -198,3 +207,28 @@ func atomicWrite(path string, b []byte) error {
 	}
 	return e
 }
+
+// MarkResult records a check only if the reviewed source settings still match.
+func (s *Store) MarkResult(id string, expected Source, state string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, e := s.load()
+	if e != nil {
+		return e
+	}
+	r := rows[id]
+	if r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel {
+		return fmt.Errorf("source changed while checking; check again")
+	}
+	r.LastChecked = time.Now().UTC()
+	r.CheckState = state
+	rows[id] = r
+	b, e := json.MarshalIndent(sourceDisk{Version: 2, Sources: rows}, "", "  ")
+	if e != nil {
+		return e
+	}
+	return atomicWrite(s.path, b)
+}
+
+// ProtectStaging creates a user-private local directory for untrusted archives.
+func ProtectStaging(path string) error { return privateDirectory(path) }

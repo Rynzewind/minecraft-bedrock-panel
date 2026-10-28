@@ -1,11 +1,21 @@
 package addonupdates
 
 import (
+	"fmt"
 	"golang.org/x/sys/windows"
 	"os"
+	"path/filepath"
 )
 
 func privateDirectory(path string) error {
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		if st, e := os.Lstat(current); e == nil && st.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return fmt.Errorf("linked staging directories are not supported")
+		}
+		if filepath.Dir(current) == current {
+			break
+		}
+	}
 	if e := os.MkdirAll(path, 0700); e != nil {
 		return e
 	}
