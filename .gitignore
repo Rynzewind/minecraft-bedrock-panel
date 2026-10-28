@@ -23,3 +23,5 @@
 **/auth-token*.json
 **/accounts.json
 # Windows .syso resources and original icons are intentionally included.
+
+**/provider-credentials/
