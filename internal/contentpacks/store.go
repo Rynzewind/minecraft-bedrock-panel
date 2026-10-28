@@ -46,6 +46,7 @@ type Manager struct {
 	root, statePath string
 	servers         map[string]config.Server
 	state           persistentState
+	previews        map[string]updateReview
 }
 
 func NewManager(root string, servers []config.Server) (*Manager, error) {
@@ -225,6 +226,9 @@ func (m *Manager) ImportArchives(filenames []string) (result []StoredPack, retEr
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.importInspectedLocked(incomingPacks, true)
+}
+func (m *Manager) importInspectedLocked(incomingPacks []Pack, persist bool) (result []StoredPack, retErr error) {
 	old := cloneState(m.state)
 	defer func() {
 		if retErr != nil {
@@ -316,8 +320,10 @@ func (m *Manager) ImportArchives(filenames []string) (result []StoredPack, retEr
 			m.state.Packs = append(m.state.Packs, incoming)
 		}
 	}
-	if err = m.save(); err != nil {
-		return nil, err
+	if persist {
+		if err = m.save(); err != nil {
+			return nil, err
+		}
 	}
 	return stored, nil
 }
