@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func (p *updatesPage) addonsTab() TabPage {
+func (p *updatesPage) addonSettingsTab() TabPage {
 	return TabPage{Title: "Add-ons", Layout: VBox{}, Children: []Widget{
 		TextLabel{Text: "Check official releases or review a downloaded archive. Staging preserves deployed versions; use Content Packs to apply changes when a server is stopped."},
 		GroupBox{Title: "CurseForge API access (optional)", Layout: VBox{}, Children: []Widget{
@@ -32,11 +32,17 @@ func (p *updatesPage) addonsTab() TabPage {
 		ComboBox{AssignTo: &p.releases, Model: []string{"Check a CurseForge source to list releases"}, CurrentIndex: 0},
 		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{Label{Text: "Stage for:"}, CheckBox{AssignTo: &p.creativeTarget, Text: "Creative"}, CheckBox{AssignTo: &p.survivalTarget, Text: "Survival"}, HSpacer{}}},
 		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{PushButton{Text: "Review local archive...", OnClicked: p.localAddon}, PushButton{Text: "Download selected release / review...", OnClicked: p.downloadAddon}}},
-		TextEdit{AssignTo: &p.addonLog, ReadOnly: true, MinSize: Size{Height: 120}, Text: "No update has been staged. API access can be added later; local archive review works without a key."}, VSpacer{},
+		TextEdit{AssignTo: &p.settingsLog, ReadOnly: true, MinSize: Size{Height: 120}, Text: "No update has been staged. API access can be added later; local archive review works without a key."}, VSpacer{},
 	}}
 }
 func (p *updatesPage) selectedAddon() string {
 	if p.pack == nil {
+		if p.addonTable != nil {
+			i := p.addonTable.CurrentIndex()
+			if i >= 0 && i < len(p.addonModel.rows) {
+				return p.addonModel.rows[i].UUID
+			}
+		}
 		return ""
 	}
 	i := p.pack.CurrentIndex()
@@ -50,7 +56,7 @@ func (p *updatesPage) addonCall(message, method string, params, out any, done fu
 		return
 	}
 	p.addonBusy = true
-	p.addonLog.SetText(message)
+	p.setAddonMessage(message)
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 		defer cancel()
@@ -58,10 +64,11 @@ func (p *updatesPage) addonCall(message, method string, params, out any, done fu
 		p.a.sync(func() {
 			p.addonBusy = false
 			if e != nil {
-				p.addonLog.SetText(e.Error())
+				p.setAddonMessage(e.Error())
+				p.refreshAddonOverview()
 				return
 			}
-			p.addonLog.SetText("Completed. " + message)
+			p.setAddonMessage("Completed. " + message)
 			if done != nil {
 				done()
 			}
@@ -74,13 +81,16 @@ func (p *updatesPage) saveKey() {
 	p.addonCall("Saving encrypted API key...", "addons.credentials.save", map[string]string{"Key": key}, nil, func() { p.loadSources() })
 }
 func (p *updatesPage) removeKey() {
-	if walk.MsgBox(p.a.mw, "Remove saved API key", "Remove this Windows user's saved CurseForge key? Source links and add-ons are retained.", walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
+	if walk.MsgBox(p.addonOwner(), "Remove saved API key", "Remove this Windows user's saved CurseForge key? Source links and add-ons are retained.", walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
 		return
 	}
 	p.addonCall("Removing saved key...", "addons.credentials.remove", struct{}{}, nil, func() { p.loadSources() })
 }
 func (p *updatesPage) loadSources() {
+	p.addonLoadGeneration++
+	generation := p.addonLoadGeneration
 	selected := p.selectedAddon()
+	owner := p.settingsDialog
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -95,8 +105,20 @@ func (p *updatesPage) loadSources() {
 			e = p.a.client.Call(ctx, "addons.credentials.status", struct{}{}, &status)
 		}
 		p.a.sync(func() {
+			if generation != p.addonLoadGeneration {
+				return
+			}
+			if current := p.selectedAddon(); current != "" {
+				selected = current
+			}
 			if e != nil {
-				p.sourceInfo.SetText(e.Error())
+				p.setAddonMessage(e.Error())
+				p.packs = packs
+				p.records = nil
+				p.keyConfigured = status.Configured
+				p.renderAddonOverview(selected)
+
+				p.addonModel.PublishRowsReset()
 				return
 			}
 			p.packs = packs
@@ -105,29 +127,40 @@ func (p *updatesPage) loadSources() {
 			for id, r := range records {
 				p.sources[id] = r.URL
 			}
-			names := []string{}
-			index := 0
-			for i, v := range packs {
-				names = append(names, fmt.Sprintf("%s — library %d.%d.%d", v.Name, v.Version[0], v.Version[1], v.Version[2]))
-				if v.UUID == selected {
-					index = i
-				}
+			p.keyConfigured = status.Configured
+			p.renderAddonOverview(selected)
+			if p.pack == nil || p.settingsDialog != owner {
+				return
 			}
-			p.pack.SetModel(names)
-			if len(names) > 0 {
-				p.pack.SetCurrentIndex(index)
-				p.selectPack()
-			}
-			keyText := "No API key configured. Manual archive review is available."
+			p.populateAddonSettings(selected)
+			text := "No API key configured. Manual archive review is available."
 			if status.Configured {
-				keyText = "API key saved for this Windows user; not tested."
+				text = "API key saved for this Windows user; not tested."
 				if !status.LastTested.IsZero() {
-					keyText = fmt.Sprintf("API key saved. Last test: %s. Successful: %t.", status.LastTested.Local().Format("02 Jan 15:04"), status.Valid)
+					text = fmt.Sprintf("API key saved. Last test: %s. Successful: %t.", status.LastTested.Local().Format("02 Jan 15:04"), status.Valid)
 				}
 			}
-			p.keyInfo.SetText(keyText)
+			p.keyInfo.SetText(text)
 		})
 	}()
+}
+func (p *updatesPage) populateAddonSettings(selected string) {
+	if p.pack == nil {
+		return
+	}
+	names := []string{}
+	index := 0
+	for i, v := range p.packs {
+		names = append(names, fmt.Sprintf("%s — library %s", v.Name, versionText(v.Version)))
+		if v.UUID == selected {
+			index = i
+		}
+	}
+	p.pack.SetModel(names)
+	if len(names) > 0 {
+		p.pack.SetCurrentIndex(index)
+		p.selectPack()
+	}
 }
 func versionText(v [3]int) string { return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2]) }
 func (p *updatesPage) selectPack() {
@@ -190,7 +223,7 @@ func (p *updatesPage) saveSource() {
 	if raw := strings.TrimSpace(p.projectID.Text()); raw != "" {
 		n, e := strconv.ParseInt(raw, 10, 64)
 		if e != nil || n <= 0 {
-			p.addonLog.SetText("Enter a numeric positive project ID.")
+			p.setAddonMessage("Enter a numeric positive project ID.")
 			return
 		}
 		r.ProjectID = n
@@ -227,9 +260,12 @@ func (p *updatesPage) checkAddon() {
 		if len(names) == 0 {
 			names = []string{"No available releases for this channel"}
 		}
-		p.releases.SetModel(names)
-		p.releases.SetCurrentIndex(0)
-		p.addonLog.SetText("Release list fetched. A listed release is a candidate; archive review verifies UUIDs, versions, dependencies and engine requirements.")
+		if p.releases != nil {
+			p.releases.SetModel(names)
+			p.releases.SetCurrentIndex(0)
+		}
+		p.refreshAddonOverview()
+		p.setAddonMessage("Release list fetched. A listed release is a candidate; archive review verifies UUIDs, versions, dependencies and engine requirements.")
 	})
 }
 func (p *updatesPage) checkAllAddons() {
@@ -243,15 +279,15 @@ func (p *updatesPage) checkAllAddons() {
 		}
 	}
 	if len(ids) == 0 {
-		p.addonLog.SetText("No CurseForge sources linked.")
+		p.setAddonMessage("No CurseForge sources linked.")
 		return
 	}
 	p.addonBusy = true
-	p.addonLog.SetText("Checking linked sources...")
+	p.setAddonMessage("Checking linked sources...")
 	go func() {
 		var b strings.Builder
 		for _, id := range ids {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 			var out addonResult
 			e := p.a.client.Call(ctx, "addons.check", map[string]string{"UUID": id}, &out)
 			cancel()
@@ -261,7 +297,7 @@ func (p *updatesPage) checkAllAddons() {
 				fmt.Fprintf(&b, "%s: %d candidate releases; select the pack and check to review.\r\n", out.Project.Name, len(out.Files))
 			}
 			text := b.String()
-			p.a.sync(func() { p.addonLog.SetText(text) })
+			p.a.sync(func() { p.setAddonMessage(text) })
 		}
 		p.a.sync(func() { p.addonBusy = false; p.loadSources() })
 	}()
@@ -281,7 +317,7 @@ func (p *updatesPage) localAddon() {
 		return
 	}
 	dlg := &walk.FileDialog{Title: "Review a Bedrock add-on update", Filter: "Bedrock archives (*.mcaddon;*.mcpack;*.zip)|*.mcaddon;*.mcpack;*.zip"}
-	ok, e := dlg.ShowOpen(p.a.mw)
+	ok, e := dlg.ShowOpen(p.addonOwner())
 	if e != nil || !ok {
 		return
 	}
@@ -290,7 +326,7 @@ func (p *updatesPage) localAddon() {
 func (p *updatesPage) downloadAddon() {
 	i := p.releases.CurrentIndex()
 	if i < 0 || i >= len(p.addonFiles) {
-		p.addonLog.SetText("Check a source and select a release first.")
+		p.setAddonMessage("Check a source and select a release first.")
 		return
 	}
 	p.previewAddon("addons.download", map[string]any{"UUID": p.selectedAddon(), "FileID": p.addonFiles[i].ID, "Servers": p.addonTargets()})
@@ -310,8 +346,8 @@ func (p *updatesPage) previewAddon(method string, params any) {
 			fmt.Fprintf(&b, "\r\nCurseForge project %d, file %d\r\n", preview.ProjectID, preview.FileID)
 		}
 		fmt.Fprintf(&b, "\r\nArchive SHA-256: %s\r\n\r\nRunning server folders are preserved. Apply later from Content Packs while stopped. Add-on compatibility beyond manifest requirements is not guaranteed.", preview.SHA256)
-		if walk.MsgBox(p.a.mw, "Review add-on update", b.String(), walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
-			p.addonLog.SetText("Review cancelled. No update staged.")
+		if walk.MsgBox(p.addonOwner(), "Review add-on update", b.String(), walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
+			p.setAddonMessage("Review cancelled. No update staged.")
 			return
 		}
 		var result struct {
@@ -319,9 +355,9 @@ func (p *updatesPage) previewAddon(method string, params any) {
 			Warning string
 		}
 		p.addonCall("Staging reviewed versions...", "addons.stage", map[string]string{"PreviewID": preview.ID}, &result, func() {
-			p.addonLog.SetText("Update staged. Use Content Packs to apply when stopped; the other server retains its deployed versions.")
+			p.setAddonMessage("Update staged. Use Content Packs to apply when stopped; the other server retains its deployed versions.")
 			if result.Warning != "" {
-				p.addonLog.SetText(result.Warning)
+				p.setAddonMessage(result.Warning)
 			}
 			p.loadSources()
 		})

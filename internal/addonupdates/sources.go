@@ -13,14 +13,18 @@ import (
 )
 
 type Source struct {
-	URL         string    `json:"url"`
-	Provider    string    `json:"provider"`
-	ProjectID   int64     `json:"project_id,omitempty"`
-	Channel     string    `json:"channel"`
-	LastChecked time.Time `json:"last_checked,omitempty"`
-	CheckState  string    `json:"check_state,omitempty"`
-	Notes       string    `json:"notes,omitempty"`
-	LastFileID  int64     `json:"last_file_id,omitempty"`
+	LatestCheckOK   bool      `json:"latest_check_ok,omitempty"`
+	LatestFileID    int64     `json:"latest_file_id,omitempty"`
+	VerifiedFileID  int64     `json:"verified_file_id,omitempty"`
+	VerifiedVersion *[3]int   `json:"verified_version,omitempty"`
+	URL             string    `json:"url"`
+	Provider        string    `json:"provider"`
+	ProjectID       int64     `json:"project_id,omitempty"`
+	Channel         string    `json:"channel"`
+	LastChecked     time.Time `json:"last_checked,omitempty"`
+	CheckState      string    `json:"check_state,omitempty"`
+	Notes           string    `json:"notes,omitempty"`
+	LastFileID      int64     `json:"last_file_id,omitempty"`
 }
 type sourceDisk struct {
 	Version int               `json:"version"`
@@ -144,6 +148,12 @@ func (s *Store) SaveRecord(id string, r Source) error {
 	if e != nil {
 		return e
 	}
+	if old, ok := rows[id]; ok && (old.URL != r.URL || old.Provider != r.Provider || old.ProjectID != r.ProjectID || old.Channel != r.Channel) {
+		r.LatestCheckOK = false
+		r.LatestFileID = 0
+		r.VerifiedFileID = 0
+		r.VerifiedVersion = nil
+	}
 	rows[id] = r
 	b, e := json.MarshalIndent(sourceDisk{Version: 2, Sources: rows}, "", "  ")
 	if e != nil {
@@ -174,6 +184,7 @@ func (s *Store) MarkChecked(id, state, notes string) error {
 	r := rows[id]
 	r.LastChecked = time.Now().UTC()
 	r.CheckState = state
+	r.LatestCheckOK = false
 	r.Notes = notes
 	r, e = normalizeSource(r)
 	if e != nil {
@@ -209,7 +220,7 @@ func atomicWrite(path string, b []byte) error {
 }
 
 // MarkResult records a check only if the reviewed source settings still match.
-func (s *Store) MarkResult(id string, expected Source, state string) error {
+func (s *Store) MarkResult(id string, expected Source, state string, latest ...int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rows, e := s.load()
@@ -222,6 +233,12 @@ func (s *Store) MarkResult(id string, expected Source, state string) error {
 	}
 	r.LastChecked = time.Now().UTC()
 	r.CheckState = state
+	r.LatestCheckOK = false
+	r.LatestFileID = 0
+	if len(latest) > 0 && latest[0] > 0 {
+		r.LatestCheckOK = true
+		r.LatestFileID = latest[0]
+	}
 	rows[id] = r
 	b, e := json.MarshalIndent(sourceDisk{Version: 2, Sources: rows}, "", "  ")
 	if e != nil {
@@ -246,6 +263,28 @@ func (s *Store) Acknowledge(id string, expected Source, projectID, fileID int64)
 	}
 	r.ProjectID = projectID
 	r.LastFileID = fileID
+	rows[id] = r
+	b, e := json.MarshalIndent(sourceDisk{Version: 2, Sources: rows}, "", "  ")
+	if e != nil {
+		return e
+	}
+	return atomicWrite(s.path, b)
+}
+
+func (s *Store) MarkVerified(id string, expected Source, fileID int64, version [3]int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, e := s.load()
+	if e != nil {
+		return e
+	}
+	r := rows[id]
+	if r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel || !r.LatestCheckOK || r.LatestFileID != fileID {
+		return fmt.Errorf("source changed during release verification")
+	}
+	r.VerifiedFileID = fileID
+	r.VerifiedVersion = &version
+	r.CheckState = "Source manifest verified; status compares library and enabled server versions"
 	rows[id] = r
 	b, e := json.MarshalIndent(sourceDisk{Version: 2, Sources: rows}, "", "  ")
 	if e != nil {

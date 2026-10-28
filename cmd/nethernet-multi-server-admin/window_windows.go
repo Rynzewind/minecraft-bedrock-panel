@@ -295,6 +295,11 @@ func (a *adminWindow) refresh() {
 			a.playerModel.set(a.state.Players)
 			a.serverModel.set(BuildServerRows(serverStatuses))
 			a.packModel.set(BuildPackRows(storedPacks))
+			if a.updates != nil && a.updates.addonTable != nil {
+				selected := a.updates.selectedAddon()
+				a.updates.packs = storedPacks
+				a.updates.renderAddonOverview(selected)
+			}
 			a.sessionModel.set(BuildSessionRows(sessionEvents))
 			_ = a.accounts.SetCurrentIndex(accountRowIndex(a.accountModel.rows, selectedAccountID))
 			_ = a.players.SetCurrentIndex(playerRowIndex(a.playerModel.rows, selectedPlayerXUID))

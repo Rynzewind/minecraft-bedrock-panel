@@ -14,6 +14,13 @@ import (
 )
 
 type updatesPage struct {
+	addonLoadGeneration             uint64
+	keyConfigured                   bool
+	addonTable                      *walk.TableView
+	settingsCog                     *walk.PushButton
+	addonModel                      addonOverviewModel
+	settingsDialog                  *walk.Dialog
+	settingsLog                     *walk.TextEdit
 	apiKey, projectID, notes        *walk.LineEdit
 	keyInfo                         *walk.TextLabel
 	channel, releases               *walk.ComboBox

@@ -33,6 +33,7 @@ type pendingEnrollment struct {
 	accountID  string
 }
 type Controller struct {
+	addonProviderFactory          func(string) addonProvider
 	addonOrigins                  map[string]addonOrigin
 	addonSources                  *addonupdates.Store
 	addonConfigPath, addonStaging string

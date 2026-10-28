@@ -568,6 +568,9 @@ func (s minecraftTableStyler) StyleCell(cell *walk.CellStyle) {
 		cell.BackgroundColor = walk.RGB(32, 62, 43)
 	}
 	cell.TextColor = mc.text
+	if model, ok := s.table.Model().(*addonOverviewModel); ok && cell.Row() >= 0 && cell.Row() < len(model.rows) && cell.Col() == 5 {
+		cell.TextColor = addonStatusColor(model.rows[cell.Row()].Status)
+	}
 	if model, ok := s.table.Model().(*serverTableModel); ok && cell.Row() < len(model.rows) && cell.Row() >= 0 {
 		row := model.rows[cell.Row()]
 		cell.Font = mcBody

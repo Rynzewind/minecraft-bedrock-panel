@@ -81,7 +81,7 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 		if e != nil {
 			return nil, e
 		}
-		e = addonupdates.NewProvider(key).Test(ctx)
+		e = c.addonProvider(key).Test(ctx)
 		if current, loadErr := c.addonCredentials.Load(); loadErr == nil && current == key {
 			if saveErr := c.addonCredentials.MarkTest(e == nil); saveErr != nil {
 				return nil, saveErr
@@ -110,18 +110,49 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 		src := rows[req.UUID]
 		key, e := c.addonCredentials.Load()
 		if e != nil {
+			_ = c.addonSources.MarkResult(req.UUID, src, e.Error())
 			return nil, e
 		}
-		project, files, e := addonupdates.NewProvider(key).Check(ctx, src)
+		project, files, e := c.addonProvider(key).Check(ctx, src)
 		state := "release list fetched; preview an archive to verify pack versions"
 		if e != nil {
 			state = e.Error()
 		}
-		if markErr := c.addonSources.MarkResult(req.UUID, src, state); markErr != nil {
+		latestID := int64(0)
+		if e == nil && len(files) > 0 {
+			latestID = files[0].ID
+		}
+		if markErr := c.addonSources.MarkResult(req.UUID, src, state, latestID); markErr != nil {
 			return nil, markErr
 		}
 		if e != nil {
 			return nil, e
+		}
+		if len(files) > 0 {
+			path, verifyErr := c.addonProvider(key).Download(ctx, project, files[0], c.addonStaging)
+			if verifyErr == nil {
+				in, inspectErr := contentpacks.Inspect(path, contentpacks.DefaultLimits)
+				os.Remove(path)
+				verifyErr = inspectErr
+				found := false
+				if inspectErr == nil {
+					for _, pack := range in.Packs {
+						if pack.UUID == req.UUID {
+							found = true
+							verifyErr = c.addonSources.MarkVerified(req.UUID, src, files[0].ID, pack.Version)
+							break
+						}
+					}
+					if !found {
+						verifyErr = fmt.Errorf("release archive does not contain the selected pack UUID")
+					}
+				}
+			}
+			if verifyErr != nil {
+				if markErr := c.addonSources.MarkResult(req.UUID, src, "Release list fetched; version verification unavailable: "+verifyErr.Error()); markErr != nil {
+					return nil, markErr
+				}
+			}
 		}
 		result := addonCheckResult{UUID: req.UUID, Project: project, Files: files, Checked: time.Now(), Source: src, AcknowledgedFileID: src.LastFileID}
 		c.mu.Lock()
@@ -157,7 +188,7 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 		if e != nil {
 			return nil, e
 		}
-		path, e := addonupdates.NewProvider(key).Download(ctx, result.Project, file, c.addonStaging)
+		path, e := c.addonProvider(key).Download(ctx, result.Project, file, c.addonStaging)
 		if e != nil {
 			return nil, e
 		}
@@ -256,4 +287,17 @@ func (c *Controller) addonEngines() (map[string][3]int, error) {
 	}
 
 	return engines, nil
+}
+
+type addonProvider interface {
+	Test(context.Context) error
+	Check(context.Context, addonupdates.Source) (addonupdates.Project, []addonupdates.ReleaseFile, error)
+	Download(context.Context, addonupdates.Project, addonupdates.ReleaseFile, string) (string, error)
+}
+
+func (c *Controller) addonProvider(key string) addonProvider {
+	if c.addonProviderFactory != nil {
+		return c.addonProviderFactory(key)
+	}
+	return addonupdates.NewProvider(key)
 }
