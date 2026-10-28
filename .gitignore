@@ -1,0 +1,25 @@
+/work/
+/bin/
+/outputs/
+/coverage.out
+/config.json
+/.superpowers/
+.env
+.env.*
+!.env.example
+*.exe
+*.zip
+*.bundle
+*.log
+*.pfx
+*.p12
+*.pem
+*.key
+**/worlds/
+**/account-store/
+**/identities/
+**/backups/
+**/session-logs/
+**/auth-token*.json
+**/accounts.json
+# Windows .syso resources and original icons are intentionally included.

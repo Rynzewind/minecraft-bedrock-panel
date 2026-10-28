@@ -1,0 +1,7 @@
+# Google Drive snapshot staging and installer publication
+
+The G: DriveFS destination rejects protected Windows directory ACLs with ERROR_INVALID_PARAMETER. Reproduced with disposable fixture snapshot; free-space API succeeds and no servers are interrupted. Stage raw snapshot data privately under MultiServer/backups/snapshot-staging on the installation's local volume. Keep final archive creation/verification in the selected dated output folder. Check space on both volumes before stopping servers; extend interrupted-job cleanup to the exact local staging parent and keep legacy-output cleanup compatible. Preserve raw world/identity permissions; never weaken ACLs on cloud storage. Add context to preflight failures and do not change progress to restarting if no server was stopped.
+
+Change the default base folder to G:\My Drive\Minecraft Server Setup\Backup Snapshots. Add a publish step for future single-file installer builds to keep G:\My Drive\Minecraft Server Setup\NetherNetSetup.exe current, copying/verifying a staged file before replacement and retaining the previous installer locally in the release outputs. Publish only after tests/scanning. Never place snapshots/worlds in the installer or overwrite them.
+
+Validate tiny full capture to real G: with fake server supervisor, interrupted local cleanup, migration regression suite, snapshot defaults, panel tests/vet; rebuild and scan helper/admin/control+single EXE; gracefully apply helper update only with no connected players, verify endpoints, copy verified current installer to Drive.

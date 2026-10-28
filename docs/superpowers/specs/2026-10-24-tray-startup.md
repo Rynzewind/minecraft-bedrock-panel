@@ -1,0 +1,12 @@
+# Sign-in startup and tray control
+
+The single Windows user wants one panel to replace the external launchers. On sign-in, start the panel hidden in the notification area and quietly ensure the helper and both managed servers are ready. A normal first launch also starts servers; opening an existing panel only shows it. Keep one panel/helper instance per installation.
+
+Start All starts the helper when absent, starts stopped/failed managed servers sequentially and verifies actual startup plus backend readiness. Already-running servers are a safe no-op. Stop All saves/stops owned servers and cleanly shuts down the helper. Restart All performs those two operations in order. Keep these buttons and tray actions available while idle even when disconnected, but serialize all work and retain the existing modal progress/connected-player confirmation for manual operations. Never force-kill processes or take over an unrelated/external server.
+
+Provide a grass-block window/tray icon, Open Panel, Start All, Stop All, Restart All and Exit Panel. Closing hides to tray. Windows shutdown and explicit Exit still close the panel; exiting leaves servers running. Unexpected crashes trigger bounded retries, maximum three per fifteen minutes with at least one minute between attempts. An intentional Stop All pauses recovery for this panel session. Individual stopped servers are not automatically restarted. Never hide repeated failures or disable Minecraft's watchdog.
+
+Use the existing Go, Walk and Windows APIs. Register one interactive logon task pointing directly to the admin executable with --startup, replacing only verified project-owned legacy autostart. Track the registration in the installation resource manifest, and keep decommissioning compatible. Preserve the boot option for users who explicitly choose it. Package matching helper/admin/control builds, updated installer assets and exact source with verified hashes and Defender scans. Update this live install only after verification; preserve worlds, credentials, network settings and existing backups.
+
+## Added scope: complete addon snapshots and installer restore
+The user also requests an explicit snapshot option for every imported addon (including disabled addons), per-server enabled/disabled assignments, and a setup-time choice to restore saved servers/addons. Preserve current archive compatibility and validate state/path rebasing. Restore must preview contents and keep the existing backup/overwrite confirmation.

@@ -1,0 +1,50 @@
+{
+  "interface_ip": "192.168.50.10",
+  "listen": "192.168.50.255:7551",
+  "servers": [
+    {
+      "id": "creative",
+      "process": {
+        "executable": "C:\\MinecraftServers\\Creative\\bedrock_server.exe",
+        "working_directory": "C:\\MinecraftServers\\Creative",
+        "world_directory": "C:\\MinecraftServers\\Creative\\worlds\\Private Creative Server",
+        "log_directory": "C:\\MinecraftServers\\Creative\\logs"
+      },
+      "name": "Private Creative Server",
+      "level_name": "Private Creative Server",
+      "backend": "192.168.50.20:19134",
+      "network_id": "10000000000000000001",
+      "protocol": 2225,
+      "version": "1.26.60.6",
+      "game_type": "creative",
+      "player_count": 0,
+      "max_player_count": 10,
+      "accepts_online_auth": true,
+      "accepts_self_signed_auth": true,
+      "nonce": "",
+      "connection_type": 4
+    },
+    {
+      "id": "survival",
+      "process": {
+        "executable": "C:\\MinecraftServers\\Survival\\bedrock_server.exe",
+        "working_directory": "C:\\MinecraftServers\\Survival",
+        "world_directory": "C:\\MinecraftServers\\Survival\\worlds\\Private Survival Server",
+        "log_directory": "C:\\MinecraftServers\\Survival\\logs"
+      },
+      "name": "Private Survival Server",
+      "level_name": "Private Survival Server",
+      "backend": "192.168.50.21:19136",
+      "network_id": "10000000000000000002",
+      "protocol": 2225,
+      "version": "1.26.60.6",
+      "game_type": "survival",
+      "player_count": 0,
+      "max_player_count": 10,
+      "accepts_online_auth": true,
+      "accepts_self_signed_auth": true,
+      "nonce": "",
+      "connection_type": 4
+    }
+  ]
+}

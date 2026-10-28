@@ -1,0 +1,29 @@
+[CmdletBinding()]
+param([switch]$SmokeTest)
+$ErrorActionPreference='Stop'
+$workspace=$null
+try {
+ $payload=Join-Path $PSScriptRoot 'payload.zip'
+ if((Get-FileHash -LiteralPath $payload -Algorithm SHA256).Hash -ne '__PAYLOAD_SHA256__'){throw 'The bundled installer failed its checksum check. Copy the setup EXE again.'}
+ $tempRoot=[IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+ $workspace=Join-Path $tempRoot ('NetherNetSetup-'+[guid]::NewGuid().ToString('N'))
+ New-Item -ItemType Directory -Path $workspace -ErrorAction Stop|Out-Null
+ Add-Type -AssemblyName System.IO.Compression.FileSystem
+ [IO.Compression.ZipFile]::ExtractToDirectory($payload,$workspace)
+ $wizard=Join-Path $workspace 'setup-assets\Setup-Wizard.ps1'
+ if(-not(Test-Path -LiteralPath $wizard)){throw 'The bundled setup wizard is missing.'}
+ $shell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+ if($SmokeTest){& $shell -NoProfile -ExecutionPolicy Bypass -File $wizard -SmokeTest}
+ else {& $shell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File $wizard}
+ if($LASTEXITCODE -ne 0){throw ('Setup exited with code '+$LASTEXITCODE)}
+} catch {
+ if($SmokeTest){Write-Error $_ -ErrorAction Continue}
+ else {Add-Type -AssemblyName System.Windows.Forms;[void][Windows.Forms.MessageBox]::Show($_.Exception.Message,'NetherNet setup failed','OK','Error')}
+ exit 1
+} finally {
+ if($workspace -and (Test-Path -LiteralPath $workspace)){
+  $resolved=[IO.Path]::GetFullPath($workspace)
+  $allowed=[IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')+'\'
+  if($resolved.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($resolved) -match '^NetherNetSetup-[a-f0-9]{32}$') {Remove-Item -LiteralPath $resolved -Recurse -Force}
+ }
+}
