@@ -33,23 +33,26 @@ type pendingEnrollment struct {
 	accountID  string
 }
 type Controller struct {
-	addonSources *addonupdates.Store
-	updates      updateManager
-	operationMu  sync.Mutex
-	shuttingDown bool
-	migration    migrationJobs
-	mu           sync.Mutex
-	store        *accountstore.Store
-	manager      *accounts.Manager
-	auth         accounts.Authenticator
-	enrollments  map[string]pendingEnrollment
-	next         int
-	supervisor   serverSupervisor
-	packs        packManager
-	shutdown     func()
-	settings     settingsManager
-	history      sessionHistory
-	permissions  playerPermissions
+	addonSources                  *addonupdates.Store
+	addonConfigPath, addonStaging string
+	addonCredentials              *addonupdates.Credentials
+	addonResults                  map[string]addonCheckResult
+	updates                       updateManager
+	operationMu                   sync.Mutex
+	shuttingDown                  bool
+	migration                     migrationJobs
+	mu                            sync.Mutex
+	store                         *accountstore.Store
+	manager                       *accounts.Manager
+	auth                          accounts.Authenticator
+	enrollments                   map[string]pendingEnrollment
+	next                          int
+	supervisor                    serverSupervisor
+	packs                         packManager
+	shutdown                      func()
+	settings                      settingsManager
+	history                       sessionHistory
+	permissions                   playerPermissions
 }
 type sessionHistory interface {
 	List(int) []sessionhistory.Event
@@ -117,8 +120,8 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 			return nil, coded{"migration_busy", "A snapshot is in progress. Wait for it to finish before making changes."}
 		}
 	}
-	if method == "addons.sources.list" || method == "addons.sources.set" {
-		return c.handleAddonSources(method, raw)
+	if strings.HasPrefix(method, "addons.") {
+		return c.handleAddonUpdates(ctx, method, raw)
 	}
 	if strings.HasPrefix(method, "updates.") {
 		return c.handleUpdates(ctx, method, raw)

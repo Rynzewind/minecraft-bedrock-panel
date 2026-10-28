@@ -9,6 +9,8 @@ $nnOutput=Join-Path $nnRoot ('outputs\release-'+$nnStamp)
 if(Test-Path -LiteralPath $nnOutput){throw 'Release output already exists; use a fresh build time.'}
 $env:GOCACHE=Join-Path $nnRoot 'work\gocache'
 $env:GOMODCACHE=Join-Path $nnRoot 'work\gomodcache'
+New-Item -ItemType Directory -Path (Join-Path $nnRoot 'work') -Force|Out-Null
+Set-Content -LiteralPath (Join-Path $nnRoot 'work\go.mod') -Value "module nethernet-build-cache`n`ngo 1.26.0" -Encoding ascii
 $env:CGO_ENABLED='0'
 $nnResourceCompiler=Join-Path $nnRoot 'work\tools\rsrc.exe'
 Push-Location $nnRoot
@@ -43,3 +45,4 @@ try {
  Write-Output ('Release directory: '+$nnOutput)
  Write-Output ('Release ZIP: '+$nnZip)
 } finally {Pop-Location}
+

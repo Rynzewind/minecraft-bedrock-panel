@@ -17,7 +17,7 @@ type migrationJobs interface {
 func (c *Controller) SetMigration(m migrationJobs) { c.migration = m }
 func migrationReadMethod(method string) bool {
 	switch method {
-	case "addons.sources.list", "updates.check", "updates.status", "status.list", "servers.list", "server.progress", "server.logs", "server.settings.get", "packs.list", "packs.pending", "pack.uninstall.preview", "player.reassign.preview", "sessions.list", "migration.status", "migration.cancel":
+	case "addons.credentials.status", "addons.sources.records", "addons.check", "addons.download", "addons.credentials.test", "addons.sources.list", "updates.check", "updates.status", "status.list", "servers.list", "server.progress", "server.logs", "server.settings.get", "packs.list", "packs.pending", "pack.uninstall.preview", "player.reassign.preview", "sessions.list", "migration.status", "migration.cancel":
 		return true
 	}
 	return false

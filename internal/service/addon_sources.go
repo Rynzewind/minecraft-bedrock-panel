@@ -12,7 +12,7 @@ func (c *Controller) handleAddonSources(method string, raw json.RawMessage) (any
 		return nil, fmt.Errorf("add-on sources unavailable")
 	}
 	if method == "addons.sources.list" {
-		return c.addonSources.List(), nil
+		return c.addonSources.Links()
 	}
 	var p struct {
 		UUID string `json:"uuid"`

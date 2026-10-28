@@ -23,3 +23,26 @@ func TestUpdatesHasDedicatedTabAndCompactControls(t *testing.T) {
 		t.Fatal("update icon missing")
 	}
 }
+
+func TestAddonSettingsAreMaskedAndRequireExplicitTargets(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	a := &adminWindow{startHidden: true}
+	if e := a.create(); e != nil {
+		t.Fatal(e)
+	}
+	defer a.mw.Dispose()
+	p := a.updates
+	if p.apiKey == nil || !p.apiKey.PasswordMode() {
+		t.Fatal("key field is not masked")
+	}
+	if len(p.addonTargets()) != 0 {
+		t.Fatal("server target preapproved")
+	}
+	if p.tabs.Pages().Len() != 2 || p.tabs.Pages().At(1).Title() != "Add-ons" {
+		t.Fatal("Add-ons subtab missing")
+	}
+	if p.addonLog == nil || p.keyInfo == nil || p.projectID == nil || p.channel == nil {
+		t.Fatal("update settings missing")
+	}
+}

@@ -114,6 +114,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	controller.SetSessionHistory(historyStore)
 	installationRoot, _ := filepath.Abs(filepath.Join(filepath.Dir(configPath), ".."))
 	controller.SetAddonSources(addonupdates.New(filepath.Join(installationRoot, "MultiServer", "addon-update-sources.json")))
+	controller.SetAddonUpdates(addonupdates.NewCredentials(filepath.Join(installationRoot, "MultiServer", "provider-credentials", "curseforge.json"), accountstore.DPAPIProtector{Entropy: []byte("NetherNet.CurseForge.v1")}), configPath, filepath.Join(installationRoot, "MultiServer", "addon-downloads"))
 	controller.SetUpdates(serverupdate.New(installationRoot, configPath, serverManager))
 	controller.SetMigration(migration.NewManager(installationRoot, serverManager, func() ([]byte, error) {
 		s := accountManager.Snapshot()

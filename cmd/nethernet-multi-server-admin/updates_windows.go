@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
+	"nethernet-multi-server/internal/addonupdates"
 	"nethernet-multi-server/internal/contentpacks"
 	"nethernet-multi-server/internal/serverupdate"
 	"os/exec"
@@ -13,6 +14,14 @@ import (
 )
 
 type updatesPage struct {
+	apiKey, projectID, notes        *walk.LineEdit
+	keyInfo                         *walk.TextLabel
+	channel, releases               *walk.ComboBox
+	creativeTarget, survivalTarget  *walk.CheckBox
+	addonLog                        *walk.TextEdit
+	records                         map[string]addonupdates.Source
+	addonFiles                      []addonupdates.ReleaseFile
+	addonBusy                       bool
 	progress                        *serverProgressDialog
 	tabs                            *walk.TabWidget
 	a                               *adminWindow
@@ -32,7 +41,7 @@ func (a *adminWindow) updatesTab() TabPage {
 	p := &updatesPage{a: a}
 	a.updates = p
 	servers := TabPage{Title: "Servers", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Update both servers together. Worlds, add-ons, accounts and settings are backed up and preserved."}, Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{PushButton{AssignTo: &p.check, Text: "Check for updates", OnClicked: p.checkUpdates}, PushButton{AssignTo: &p.install, Text: "Update servers...", Enabled: false, OnClicked: p.start}, PushButton{AssignTo: &p.backup, Text: "Open backup", Enabled: false, OnClicked: p.openBackup}, PushButton{AssignTo: &p.recover, Text: "Recover backup...", Enabled: false, OnClicked: p.restore}}}, TextEdit{AssignTo: &p.summary, ReadOnly: true, MinSize: Size{Height: 140}, StretchFactor: 1, Text: "Check for the latest official stable release. Updates run only when everyone has left the servers.\r\nFuture releases need matching NetherNet protocol support."}}}
-	addons := TabPage{Title: "Add-ons", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Save each pack's official project page. Automatic CurseForge checks require API access; source pages are checked manually for now."}, ComboBox{AssignTo: &p.pack, Model: []string{"Load installed add-ons..."}, CurrentIndex: 0, OnCurrentIndexChanged: p.selectPack}, Label{Text: "Official project page:"}, LineEdit{AssignTo: &p.source, ToolTipText: "HTTPS project page, such as CurseForge or the author's website"}, Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{PushButton{Text: "Save source", OnClicked: p.saveSource}, PushButton{Text: "Open source", OnClicked: p.openSource}, PushButton{Text: "Reload add-ons", OnClicked: p.loadSources}}}, TextLabel{AssignTo: &p.sourceInfo, Text: "Select an add-on and save its source page. Pack names alone cannot reliably identify projects."}, VSpacer{}}}
+	addons := p.addonsTab()
 	return TabPage{Title: "Updates", Layout: VBox{MarginsZero: true}, Children: []Widget{TabWidget{AssignTo: &p.tabs, Pages: []TabPage{scrollableAdminPage(servers), scrollableAdminPage(addons)}}}}
 }
 func (p *updatesPage) showError(e error) { p.summary.SetText(e.Error()) }
@@ -198,74 +207,6 @@ func (p *updatesPage) restore() {
 				p.last = s
 				p.summary.SetText(s.Message)
 				p.recover.SetEnabled(false)
-			}
-		})
-	}()
-}
-func (p *updatesPage) loadSources() {
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		var packs []contentpacks.InventoryItem
-		var sources map[string]string
-		e := p.a.client.Call(ctx, "packs.list", struct{}{}, &packs)
-		if e == nil {
-			e = p.a.client.Call(ctx, "addons.sources.list", struct{}{}, &sources)
-		}
-		p.a.sync(func() {
-			if e != nil {
-				p.sourceInfo.SetText(e.Error())
-				return
-			}
-			p.packs = packs
-			p.sources = sources
-			names := []string{}
-			for _, v := range packs {
-				names = append(names, fmt.Sprintf("%s — %d.%d.%d", v.Name, v.Version[0], v.Version[1], v.Version[2]))
-			}
-			p.pack.SetModel(names)
-			if len(names) > 0 {
-				p.pack.SetCurrentIndex(0)
-				p.selectPack()
-			} else {
-				p.sourceInfo.SetText("No add-ons in the library.")
-			}
-		})
-	}()
-}
-func (p *updatesPage) selectPack() {
-	if p.pack == nil || p.source == nil {
-		return
-	}
-	i := p.pack.CurrentIndex()
-	if i < 0 || i >= len(p.packs) {
-		return
-	}
-	u := p.sources[p.packs[i].UUID]
-	p.source.SetText(u)
-	if u == "" {
-		p.sourceInfo.SetText("No source linked. Automatic update status is unknown.")
-	} else {
-		p.sourceInfo.SetText("Source linked. Open the page to check releases; automatic API checks are not enabled.")
-	}
-}
-func (p *updatesPage) saveSource() {
-	i := p.pack.CurrentIndex()
-	if i < 0 || i >= len(p.packs) {
-		return
-	}
-	id := p.packs[i].UUID
-	u := strings.TrimSpace(p.source.Text())
-	go func() {
-		ctx, cancel := timeoutContext()
-		defer cancel()
-		e := p.a.client.Call(ctx, "addons.sources.set", map[string]string{"uuid": id, "url": u}, nil)
-		p.a.sync(func() {
-			if e != nil {
-				p.sourceInfo.SetText(e.Error())
-			} else {
-				p.sources[id] = u
-				p.sourceInfo.SetText("Source saved. Open its page to review available releases.")
 			}
 		})
 	}()
