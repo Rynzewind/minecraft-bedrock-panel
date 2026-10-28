@@ -249,24 +249,29 @@ func rebasePackState(p string, rebase func(string) (string, error)) error {
 	if e = json.Unmarshal(b, &state); e != nil {
 		return e
 	}
-	var packs []map[string]json.RawMessage
-	if e = json.Unmarshal(state["packs"], &packs); e != nil {
-		return e
-	}
-	for _, pack := range packs {
-		if raw, ok := pack["installed_path"]; ok {
-			var old string
-			if e = json.Unmarshal(raw, &old); e != nil {
-				return e
-			}
-			next, e := rebase(old)
-			if e != nil {
-				return e
-			}
-			pack["installed_path"], _ = json.Marshal(next)
+	for _, field := range []string{"packs", "versions"} {
+		if _, ok := state[field]; !ok {
+			continue
 		}
+		var packs []map[string]json.RawMessage
+		if e = json.Unmarshal(state[field], &packs); e != nil {
+			return e
+		}
+		for _, pack := range packs {
+			if raw, ok := pack["installed_path"]; ok {
+				var old string
+				if e = json.Unmarshal(raw, &old); e != nil {
+					return e
+				}
+				next, e := rebase(old)
+				if e != nil {
+					return e
+				}
+				pack["installed_path"], _ = json.Marshal(next)
+			}
+		}
+		state[field], _ = json.Marshal(packs)
 	}
-	state["packs"], _ = json.Marshal(packs)
 	return writeJSON(p, state)
 }
 func writeLaunchers(root string) error {

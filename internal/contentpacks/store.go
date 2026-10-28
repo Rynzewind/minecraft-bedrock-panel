@@ -18,22 +18,28 @@ type StoredPack struct {
 	InstalledPath string `json:"installed_path"`
 }
 type AssignmentState struct {
-	Enabled bool  `json:"enabled"`
-	Pending *bool `json:"pending,omitempty"`
+	Version        [3]int `json:"version"`
+	PendingVersion [3]int `json:"pending_version,omitempty"`
+	Enabled        bool   `json:"enabled"`
+	Pending        *bool  `json:"pending,omitempty"`
 }
 type InventoryItem struct {
 	StoredPack
 	Servers map[string]AssignmentState `json:"servers"`
 }
 type Operation struct {
+	Pinned             bool
+	Version            [3]int
 	ServerID, PackUUID string
 	Enable             bool
 }
 type persistentState struct {
-	Packs                 []StoredPack               `json:"packs"`
-	Pending               []Operation                `json:"pending"`
-	Enabled               map[string]map[string]bool `json:"enabled,omitempty"`
-	PendingResourcePolicy map[string]bool            `json:"pending_resource_policy,omitempty"`
+	Versions              []StoredPack                 `json:"versions,omitempty"`
+	EnabledVersions       map[string]map[string][3]int `json:"enabled_versions,omitempty"`
+	Packs                 []StoredPack                 `json:"packs"`
+	Pending               []Operation                  `json:"pending"`
+	Enabled               map[string]map[string]bool   `json:"enabled,omitempty"`
+	PendingResourcePolicy map[string]bool              `json:"pending_resource_policy,omitempty"`
 }
 type Manager struct {
 	mu              sync.Mutex
@@ -63,6 +69,9 @@ func NewManager(root string, servers []config.Server) (*Manager, error) {
 	if m.state.PendingResourcePolicy == nil {
 		m.state.PendingResourcePolicy = map[string]bool{}
 	}
+	if err == nil {
+		err = m.ensureVersions()
+	}
 	return m, err
 }
 func (m *Manager) StageResourcePolicy(serverID string, required bool) error {
@@ -89,9 +98,18 @@ func (m *Manager) Stage(serverID, uuid string, enable bool) error {
 	return m.StageMany(serverID, []string{uuid}, enable)
 }
 
-func (m *Manager) StageMany(serverID string, uuids []string, enable bool) error {
+func (m *Manager) StageMany(serverID string, uuids []string, enable bool) (retErr error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	old := cloneState(m.state)
+	defer func() {
+		if retErr != nil {
+			m.state = old
+		}
+	}()
+	if e := m.ensureVersions(); e != nil {
+		return e
+	}
 	if _, ok := m.servers[serverID]; !ok {
 		return errors.New("server not found")
 	}
@@ -132,12 +150,24 @@ func (m *Manager) StageMany(serverID string, uuids []string, enable bool) error 
 		for i, operation := range m.state.Pending {
 			if operation.ServerID == serverID && operation.PackUUID == packUUID {
 				m.state.Pending[i].Enable = enable
+				for _, p := range m.state.Packs {
+					if p.UUID == packUUID {
+						m.state.Pending[i].Version = p.Version
+						m.state.Pending[i].Pinned = true
+					}
+				}
 				updated = true
 				break
 			}
 		}
 		if !updated {
-			m.state.Pending = append(m.state.Pending, Operation{serverID, packUUID, enable})
+			var v [3]int
+			for _, p := range m.state.Packs {
+				if p.UUID == packUUID {
+					v = p.Version
+				}
+			}
+			m.state.Pending = append(m.state.Pending, Operation{ServerID: serverID, PackUUID: packUUID, Enable: enable, Version: v, Pinned: true})
 		}
 	}
 	return m.save()
@@ -178,7 +208,7 @@ func (m *Manager) ImportArchive(filename string) ([]StoredPack, error) {
 	return m.ImportArchives([]string{filename})
 }
 
-func (m *Manager) ImportArchives(filenames []string) ([]StoredPack, error) {
+func (m *Manager) ImportArchives(filenames []string) (result []StoredPack, retErr error) {
 	if len(filenames) == 0 {
 		return nil, errors.New("at least one archive is required")
 	}
@@ -195,6 +225,15 @@ func (m *Manager) ImportArchives(filenames []string) ([]StoredPack, error) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	old := cloneState(m.state)
+	defer func() {
+		if retErr != nil {
+			m.state = old
+		}
+	}()
+	if e := m.ensureVersions(); e != nil {
+		return nil, e
+	}
 	available := map[string][3]int{}
 	for _, existing := range m.state.Packs {
 		available[existing.UUID] = existing.Version
@@ -264,6 +303,7 @@ func (m *Manager) ImportArchives(filenames []string) ([]StoredPack, error) {
 		stored = append(stored, StoredPack{Pack: p, InstalledPath: dest})
 	}
 	for _, incoming := range stored {
+		m.rememberVersion(incoming)
 		replaced := false
 		for i, existing := range m.state.Packs {
 			if existing.UUID == incoming.UUID {
@@ -437,11 +477,12 @@ func (m *Manager) InventoryState() []InventoryItem {
 	for _, pack := range m.state.Packs {
 		item := InventoryItem{StoredPack: pack, Servers: map[string]AssignmentState{}}
 		for serverID := range m.servers {
-			state := AssignmentState{Enabled: m.state.Enabled[serverID][pack.UUID]}
+			state := AssignmentState{Enabled: m.state.Enabled[serverID][pack.UUID], Version: m.state.EnabledVersions[serverID][pack.UUID]}
 			for _, operation := range m.state.Pending {
 				if operation.ServerID == serverID && operation.PackUUID == pack.UUID {
 					pending := operation.Enable
 					state.Pending = &pending
+					state.PendingVersion = operation.Version
 				}
 			}
 			item.Servers[serverID] = state

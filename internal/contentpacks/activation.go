@@ -64,6 +64,10 @@ func (m *Manager) Apply(serverID string) (applyErr error) {
 			enabled[o.PackUUID] = o.Enable
 		}
 	}
+	resolved, versions, resolveErr := m.resolvedPacks(serverID, enabled)
+	if resolveErr != nil {
+		return resolveErr
+	}
 	backup := filepath.Join(m.root, "backups", serverID, time.Now().Format("20060102-150405.000000000"))
 	if err := os.MkdirAll(backup, 0o750); err != nil {
 		return err
@@ -108,7 +112,7 @@ func (m *Manager) Apply(serverID string) (applyErr error) {
 			}
 		}
 	}()
-	for _, p := range m.state.Packs {
+	for _, p := range resolved {
 		packDir := "resource_packs"
 		if p.Type == Behavior {
 			packDir = "behavior_packs"
@@ -163,7 +167,7 @@ func (m *Manager) Apply(serverID string) (applyErr error) {
 			return err
 		}
 	}
-	oldState := m.state
+	oldState := cloneState(m.state)
 	oldState.Pending = append([]Operation(nil), m.state.Pending...)
 	oldState.Enabled = cloneEnabled(m.state.Enabled)
 	oldState.PendingResourcePolicy = clonePolicies(m.state.PendingResourcePolicy)
@@ -179,6 +183,7 @@ func (m *Manager) Apply(serverID string) (applyErr error) {
 		m.state.Enabled = map[string]map[string]bool{}
 	}
 	m.state.Enabled[serverID] = enabled
+	m.state.EnabledVersions[serverID] = versions
 	if err := m.save(); err != nil {
 		m.state = oldState
 		return err
