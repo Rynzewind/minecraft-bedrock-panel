@@ -14,7 +14,34 @@ import (
 
 const CurrentVersion = 1
 
+// Non-helper roles require a disk schema that older helpers reject, so a
+// rollback cannot silently allocate a broadcaster identity to a LAN player.
+const roleAwareDiskVersion = 2
+
+const (
+	RoleHelper      = "helper"
+	RoleBroadcaster = "broadcaster"
+	RoleUnassigned  = "unassigned"
+)
+
+// EffectiveRole keeps pre-role account stores compatible with helper allocation.
+func EffectiveRole(role string) string {
+	if role == "" {
+		return RoleHelper
+	}
+	return role
+}
+
+func ValidateRole(role string) error {
+	switch EffectiveRole(role) {
+	case RoleHelper, RoleBroadcaster, RoleUnassigned:
+		return nil
+	}
+	return fmt.Errorf("invalid account role %q", role)
+}
+
 type Account struct {
+	Role           string `json:"role"`
 	ID             string `json:"id"`
 	PersonLabel    string `json:"person_label"`
 	EmailLabel     string `json:"email_label,omitempty"`
@@ -41,6 +68,7 @@ type Protector interface {
 }
 
 type diskAccount struct {
+	Role                                               string `json:"Role,omitempty"`
 	ID, PersonLabel, EmailLabel, Gamertag, XUID, Token string
 	Order                                              int
 	Healthy                                            bool
@@ -79,11 +107,17 @@ func (s *Store) load() (Snapshot, error) {
 	if err = json.Unmarshal(b, &d); err != nil {
 		return Snapshot{}, fmt.Errorf("decode account store: %w", err)
 	}
-	if d.Version != CurrentVersion {
+	if d.Version != CurrentVersion && d.Version != roleAwareDiskVersion {
 		return Snapshot{}, fmt.Errorf("unsupported account store version %d", d.Version)
 	}
-	out := Snapshot{Version: d.Version, Players: d.Players, Accounts: make([]Account, 0, len(d.Accounts))}
+	out := Snapshot{Version: CurrentVersion, Players: d.Players, Accounts: make([]Account, 0, len(d.Accounts))}
 	for _, a := range d.Accounts {
+		if err := ValidateRole(a.Role); err != nil {
+			return Snapshot{}, err
+		}
+		if d.Version == CurrentVersion && EffectiveRole(a.Role) != RoleHelper {
+			return Snapshot{}, errors.New("non-helper account role requires role-aware account store version")
+		}
 		cipher, err := base64.StdEncoding.DecodeString(a.Token)
 		if err != nil {
 			return Snapshot{}, fmt.Errorf("decode token for %s: %w", a.ID, err)
@@ -92,7 +126,7 @@ func (s *Store) load() (Snapshot, error) {
 		if err != nil {
 			return Snapshot{}, fmt.Errorf("decrypt token for %s: %w", a.ID, err)
 		}
-		out.Accounts = append(out.Accounts, Account{ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, EncryptedToken: string(plain), Order: a.Order, Healthy: a.Healthy})
+		out.Accounts = append(out.Accounts, Account{Role: EffectiveRole(a.Role), ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, EncryptedToken: string(plain), Order: a.Order, Healthy: a.Healthy})
 	}
 	return out, nil
 }
@@ -107,11 +141,17 @@ func (s *Store) Save(in Snapshot) error {
 	}
 	d := diskSnapshot{Version: in.Version, Players: in.Players, Accounts: make([]diskAccount, 0, len(in.Accounts))}
 	for _, a := range in.Accounts {
+		if err := ValidateRole(a.Role); err != nil {
+			return err
+		}
+		if EffectiveRole(a.Role) != RoleHelper {
+			d.Version = roleAwareDiskVersion
+		}
 		cipher, err := s.protector.Protect([]byte(a.EncryptedToken))
 		if err != nil {
 			return fmt.Errorf("encrypt token for %s: %w", a.ID, err)
 		}
-		d.Accounts = append(d.Accounts, diskAccount{ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, Token: base64.StdEncoding.EncodeToString(cipher), Order: a.Order, Healthy: a.Healthy})
+		d.Accounts = append(d.Accounts, diskAccount{Role: EffectiveRole(a.Role), ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, Token: base64.StdEncoding.EncodeToString(cipher), Order: a.Order, Healthy: a.Healthy})
 	}
 	sort.SliceStable(d.Accounts, func(i, j int) bool { return d.Accounts[i].Order < d.Accounts[j].Order })
 	b, err := json.MarshalIndent(d, "", "  ")

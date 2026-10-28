@@ -10,6 +10,7 @@ import (
 	"nethernet-multi-server/internal/addonupdates"
 	"nethernet-multi-server/internal/adminapi"
 	"nethernet-multi-server/internal/contentpacks"
+	"nethernet-multi-server/internal/online"
 	"nethernet-multi-server/internal/serversettings"
 	"nethernet-multi-server/internal/sessionhistory"
 	"nethernet-multi-server/internal/supervisor"
@@ -18,6 +19,7 @@ import (
 )
 
 type PublicAccount struct {
+	Role                                               string
 	ID, PersonLabel, EmailLabel, Gamertag, XUID, State string
 	Order                                              int
 	Healthy                                            bool
@@ -33,6 +35,10 @@ type pendingEnrollment struct {
 	accountID  string
 }
 type Controller struct {
+	online                        *online.Manager
+	onlineLoadError               error
+	onlineResolutions             map[string]resolvedOnlinePlayer
+	onlineResolver                func(context.Context, string, string) (online.Player, error)
 	addonProviderFactory          func(string) addonProvider
 	addonOrigins                  map[string]addonOrigin
 	addonSources                  *addonupdates.Store
@@ -121,6 +127,9 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		if c.migration != nil && c.migration.Busy() {
 			return nil, coded{"migration_busy", "A snapshot is in progress. Wait for it to finish before making changes."}
 		}
+	}
+	if strings.HasPrefix(method, "online.") {
+		return c.handleOnline(ctx, method, raw)
 	}
 	if strings.HasPrefix(method, "addons.") {
 		return c.handleAddonUpdates(ctx, method, raw)
@@ -387,12 +396,14 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return nil, c.packs.Apply(p.ServerID)
 	case "status.list":
 		return c.status(), nil
+	case "account.capabilities":
+		return map[string]bool{"broadcaster_roles": true}, nil
 	case "account.enroll.begin":
 		var p adminapi.EnrollmentParams
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return nil, coded{"invalid_request", err.Error()}
 		}
-		code, enrollment, err := accounts.BeginEnrollment(ctx, c.store, c.auth, accounts.Labels{Person: p.PersonLabel, Email: p.EmailLabel})
+		code, enrollment, err := accounts.BeginEnrollment(ctx, c.store, c.auth, accounts.Labels{Person: p.PersonLabel, Email: p.EmailLabel, Role: p.Role})
 		if err != nil {
 			return nil, err
 		}
@@ -470,8 +481,23 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		if err := json.Unmarshal(raw, &p); err != nil {
 			return nil, coded{"invalid_request", err.Error()}
 		}
+		if c.online != nil && c.online.UsesAccount(p.AccountID) {
+			return nil, fmt.Errorf("unassign this account from Online before removing it")
+		}
 		err := c.manager.RemoveAccount(p.AccountID)
 		return nil, mapManagerError(err)
+	case "account.role":
+		var p struct {
+			AccountID string `json:"account_id"`
+			Role      string `json:"role"`
+		}
+		if json.Unmarshal(raw, &p) != nil {
+			return nil, fmt.Errorf("invalid role request")
+		}
+		if c.online != nil && c.online.UsesAccount(p.AccountID) {
+			return nil, fmt.Errorf("unassign this account from Online before changing its role")
+		}
+		return nil, c.manager.SetRole(p.AccountID, p.Role)
 	case "account.reorder":
 		var p struct {
 			AccountIDs []string `json:"account_ids"`
@@ -537,7 +563,7 @@ func (c *Controller) status() Status {
 		} else if !a.Healthy {
 			state = "Needs sign-in"
 		}
-		out.Accounts = append(out.Accounts, PublicAccount{ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, State: state, Order: a.Order, Healthy: a.Healthy})
+		out.Accounts = append(out.Accounts, PublicAccount{Role: accountstore.EffectiveRole(a.Role), ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, State: state, Order: a.Order, Healthy: a.Healthy})
 	}
 	return out
 }

@@ -18,12 +18,12 @@ function Invoke-NNInstallTools([string]$Root,[string]$SourceDirectory,[string]$C
  $seen=@{}
  foreach($entry in ($CompanionHashes -split ',')){
   $parts=$entry -split ':'
-  if($parts.Count -ne 2 -or $parts[0] -notin @('NetherNetMultiServer.exe','NetherNetMultiServerAdmin.exe','NetherNetMultiServerControl.exe') -or $seen.ContainsKey($parts[0])){throw 'Invalid companion executable manifest.'}
+  if($parts.Count -ne 2 -or $parts[0] -notin @('NetherNetMultiServer.exe','NetherNetMultiServerAdmin.exe','NetherNetMultiServerControl.exe','NetherNetOnline.exe') -or $seen.ContainsKey($parts[0])){throw 'Invalid companion executable manifest.'}
   $seen[$parts[0]]=$true;$source=Join-Path $CompanionDirectory $parts[0]
   if((Get-NNHash $source) -ne $parts[1]){throw ('Companion executable checksum failed: '+$parts[0])}
   Add-Replacement (Join-Path $rootPath ('MultiServer\'+$parts[0])) ([IO.File]::ReadAllBytes($source))
  }
- if($seen.Count -ne 3){throw 'Companion executable manifest is incomplete.'}
+ if(-not $seen.ContainsKey('NetherNetMultiServer.exe') -or -not $seen.ContainsKey('NetherNetMultiServerAdmin.exe') -or -not $seen.ContainsKey('NetherNetMultiServerControl.exe') -or $seen.Count -notin @(3,4)){throw 'Companion executable manifest is incomplete.'}
  $destination=Join-Path $rootPath 'MultiServer\installer'
   if($ScriptOnly){
   Add-Replacement (Join-Path $destination 'release-hashes.json') ([IO.File]::ReadAllBytes((Join-Path $SourceDirectory 'release-hashes.json')))

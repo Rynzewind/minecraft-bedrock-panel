@@ -1,0 +1,11 @@
+# Online access architecture and implementation boundary
+
+User-approved task: secure optional Xbox Friends discovery integrated with Servers, Accounts and a new Online tab; preserve LAN and all data. No live installer publication/replacement, firewall changes or router forwarding. Existing root Gophertunnel remains untouched.
+
+Research pinned go-mcxboxbroadcast bb06c2ddc46fb61b2bbbb886f08d6edf11383a3e (MIT) in a separate module, versus original Java 798d8b3a6107359643b525f1c9c3303c020ae09b (GPL). Go's compiled fork supports 2193/1.26.50, existing application 2225/1.26.60. Upstream direct Transfer chooses a static public destination, and NetherNet peer information is not proof of physical LAN membership. Native BDS allowlisting cannot separate LAN helper identities from internet ingress. Upstream relay needs weakened backend authentication and is rejected.
+
+Implementation chooses a fail-closed preparation build: persisted Online settings, explicit per-server stable-XUID policy, Accounts-only enrolment/roles, existing lifecycle-derived statuses, routing/connectivity diagnostics, and an independently compiled capability/admission probe. No broadcaster Start, session publication, public listener, firewall change, backend allowlist mutation or external transfer is enabled. Enabled intent must display Blocked, never Advertising/Verified. LAN startup is independent of Online load errors.
+
+A future secure runtime needs protocol compatibility validation, a protected authenticated remote gateway with no bypassable BDS entry, and fresh locality evidence or an explicitly accepted limitation. Checkbox/operator claims/private candidates cannot satisfy those gates. This build does not claim complete Friends joining, LAN-first enforcement, external access denial integration tests, or physical console tests.
+
+Accounts: legacy empty roles remain helper. Broadcaster/unassigned cannot be leased to LAN players; mapped/active/Online-assigned roles cannot change silently. Same DPAPI token store/device flow, no second plaintext cache. Profile lookup uses authenticated Microsoft Xbox profile service, bounded HTTPS, no redirects, stable XUID and explicit confirmation before grant. ACL does not grant public access while runtime is blocked.

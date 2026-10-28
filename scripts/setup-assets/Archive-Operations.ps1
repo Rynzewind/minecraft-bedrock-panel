@@ -49,12 +49,13 @@ function Convert-NNMigrationPath([string]$Path,[string]$SourceRoot,[string]$Dest
 }
 function Import-NNPortableAccounts([string]$Stage){
  $portable=Get-Content -LiteralPath (Join-Path $Stage 'accounts-migration.json') -Raw -Encoding UTF8|ConvertFrom-Json
- if($portable.version -ne 1){throw 'Unsupported account metadata.'}
+ if($portable.version -notin @(1,2)){throw 'Unsupported account metadata.'}
  $ids=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal);$accounts=[Collections.Generic.List[object]]::new();$players=[Collections.Generic.List[object]]::new();$entropy=[Text.Encoding]::UTF8.GetBytes('NetherNetMultiServer/account-store/v1')
- foreach($account in $portable.accounts){if(-not $account.id -or -not $ids.Add($account.id)){throw 'Invalid or duplicate account ID.'};$cipher=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes('{}'),$entropy,[Security.Cryptography.DataProtectionScope]::CurrentUser);$accounts.Add([ordered]@{ID=$account.id;PersonLabel=$account.person_label;EmailLabel=$account.email_label;Gamertag=$account.gamertag;XUID=$account.xuid;Token=[Convert]::ToBase64String($cipher);Order=[int]$account.order;Healthy=$false})}
+ foreach($account in $portable.accounts){if(-not $account.id -or -not $ids.Add($account.id)){throw 'Invalid or duplicate account ID.'}; $role=[string]$account.role;if(-not $role){$role='helper'};if($role -notin @('helper','broadcaster','unassigned')){throw 'Unsupported account role.'};if($portable.version -eq 1 -and $role -ne 'helper'){throw 'Non-helper roles require account metadata version 2.'};$cipher=[Security.Cryptography.ProtectedData]::Protect([Text.Encoding]::UTF8.GetBytes('{}'),$entropy,[Security.Cryptography.DataProtectionScope]::CurrentUser);$accounts.Add([ordered]@{ID=$account.id;Role=$role;PersonLabel=$account.person_label;EmailLabel=$account.email_label;Gamertag=$account.gamertag;XUID=$account.xuid;Token=[Convert]::ToBase64String($cipher);Order=[int]$account.order;Healthy=$false})}
  foreach($player in $portable.players){if(-not $ids.Contains($player.account_id)){throw 'Player mapping references a missing account.'};$players.Add($player)}
  $directory=Join-Path $Stage 'MultiServer/account-store';[IO.Directory]::CreateDirectory($directory)|Out-Null
- Write-NNJson (Join-Path $directory 'accounts.json') ([ordered]@{Version=1;Accounts=$accounts.ToArray();Players=$players.ToArray()})
+ $diskVersion=1;if(@($accounts|Where-Object {$_.Role -ne 'helper'}).Count){$diskVersion=2}
+ Write-NNJson (Join-Path $directory 'accounts.json') ([ordered]@{Version=$diskVersion;Accounts=$accounts.ToArray();Players=$players.ToArray()})
 }
 function Write-NNPortableLaunchers([string]$Stage){
  $legacy=Join-Path $Stage 'StartMinecraftServers.vbs'
@@ -90,6 +91,7 @@ function Restore-NNSnapshot([string]$ArchivePath,[string]$Destination,[string]$P
   }
   Write-NNJson $configPath $cfg
   $statePath=Join-Path $stage 'MultiServer/content-staging/state.json';if(Test-Path $statePath){$state=Get-Content $statePath -Raw -Encoding UTF8|ConvertFrom-Json;foreach($pack in @($state.packs)+@($state.versions)){if($pack.PSObject.Properties['installed_path']){$pack.installed_path=Convert-NNMigrationPath $pack.installed_path $snapshot.manifest.source_root $destinationPath}};Write-NNJson $statePath $state}
+  $onlinePath=Join-Path $stage 'MultiServer/online/settings.json';if(Test-Path -LiteralPath $onlinePath){$online=Get-Content -LiteralPath $onlinePath -Raw|ConvertFrom-Json;foreach($entry in $online.settings.servers.PSObject.Properties){$entry.Value.enabled=$false};Write-NNJson $onlinePath $online}
   Import-NNPortableAccounts $stage;Write-NNPortableLaunchers $stage
   foreach($name in @('NetherNetMultiServer.exe','NetherNetMultiServerAdmin.exe','NetherNetMultiServerControl.exe')){if(-not(Test-Path -LiteralPath (Join-Path $stage ('MultiServer/'+$name)))){throw 'A required application executable is missing.'}}
   [IO.File]::WriteAllText((Join-Path $stage 'migration-activation-required'),'Complete reviewed Windows configuration before LAN advertising.')

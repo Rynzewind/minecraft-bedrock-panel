@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,5 +41,37 @@ func TestRetainedVersionCatalogRebased(t *testing.T) {
 	b, _ := os.ReadFile(p)
 	if !strings.Contains(string(b), "new/old/retained") || !strings.Contains(string(b), "enabled_versions") {
 		t.Fatalf("catalog lost: %s", b)
+	}
+}
+
+func TestOnlineRestoreAlwaysDisablesIntent(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "online.json")
+	os.WriteFile(p, []byte(`{"version":1,"settings":{"version":1,"servers":{"creative":{"enabled":true,"account_id":"b"}}},"players":[{"xuid":"123","gamertag":"fixture","permissions":{"creative":true}}]}`), 0600)
+	if e := disableRestoredOnline(p); e != nil {
+		t.Fatal(e)
+	}
+	b, _ := os.ReadFile(p)
+	var state struct {
+		Settings struct {
+			Servers map[string]struct {
+				Enabled   bool
+				AccountID string `json:"account_id"`
+			}
+		}
+		Players []any
+	}
+	if e := json.Unmarshal(b, &state); e != nil {
+		t.Fatal(e)
+	}
+	if state.Settings.Servers["creative"].Enabled || state.Settings.Servers["creative"].AccountID != "b" || len(state.Players) != 1 {
+		t.Fatalf("restore lost policy or enabled Online: %s", b)
+	}
+}
+
+func TestOnlineRestoreRejectsNullServer(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "online.json")
+	os.WriteFile(p, []byte(`{"version":1,"settings":{"version":1,"servers":{"creative":null}},"players":[]}`), 0600)
+	if e := disableRestoredOnline(p); e == nil {
+		t.Fatal("null server entry accepted")
 	}
 }

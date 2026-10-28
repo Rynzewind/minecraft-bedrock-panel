@@ -23,6 +23,8 @@ func minecraftGroupCaptionRect(text walk.Size, width, dpi int) win.RECT {
 }
 func minecraftTabIcon(title string) string {
 	switch title {
+	case "Online", "Connectivity":
+		return "online"
 	case "Servers":
 		return "grass"
 	case "Content Packs", "Add-ons":

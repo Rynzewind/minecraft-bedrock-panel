@@ -31,6 +31,13 @@ try {
   & $GoExe build -buildvcs=false -trimpath -ldflags $nnFlags -o (Join-Path $nnOutput $nnName) ('./cmd/'+$nnTarget)
   if($LASTEXITCODE -ne 0){throw ('Build failed: '+$nnTarget)}
  }
+  $nnOnline=Join-Path $nnRoot 'components\online-broadcaster'
+ & $GoExe -C $nnOnline test ./...
+ if($LASTEXITCODE -ne 0){throw 'Isolated Online component tests failed.'}
+ & $GoExe -C $nnOnline build -buildvcs=false -trimpath -ldflags '-s -w' -o (Join-Path $nnOutput 'NetherNetOnline.exe') .
+ if($LASTEXITCODE -ne 0){throw 'Isolated Online component build failed.'}
+ & (Join-Path $nnOutput 'NetherNetOnline.exe') --probe | Set-Content -LiteralPath (Join-Path $nnOutput 'online-capabilities.json') -Encoding utf8
+ if($LASTEXITCODE -ne 0){throw 'Online capability probe failed.'}
  Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'setup-assets') -File|ForEach-Object{Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $nnOutput 'setup-assets')}
  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'update-panel.ps1') -Destination $nnOutput
  [IO.File]::WriteAllText((Join-Path $nnOutput 'Install-NetherNet.cmd'),"@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File `"%~dp0setup-assets\Setup-Wizard.ps1`" %*`r`n",[Text.UTF8Encoding]::new($false))
@@ -45,4 +52,5 @@ try {
  Write-Output ('Release directory: '+$nnOutput)
  Write-Output ('Release ZIP: '+$nnZip)
 } finally {Pop-Location}
+
 

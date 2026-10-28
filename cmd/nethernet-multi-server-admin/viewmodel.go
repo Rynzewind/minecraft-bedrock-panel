@@ -1,12 +1,14 @@
 package main
 
 import (
+	"nethernet-multi-server/internal/accountstore"
 	"nethernet-multi-server/internal/service"
 	"sort"
 	"strings"
 )
 
 type AccountRow struct {
+	Role                                                                       string
 	ID, PersonLabel, EmailLabel, Gamertag, XUID, State, CurrentPlayer, Backend string
 	Order                                                                      int
 }
@@ -49,7 +51,7 @@ func BuildViewState(s service.Status) ViewState {
 		}
 	}
 	for _, a := range accounts {
-		row := AccountRow{ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, State: a.State, Order: a.Order}
+		row := AccountRow{Role: accountstore.EffectiveRole(a.Role), ID: a.ID, PersonLabel: a.PersonLabel, EmailLabel: a.EmailLabel, Gamertag: a.Gamertag, XUID: a.XUID, State: a.State, Order: a.Order}
 		row.CurrentPlayer = assignedByAccount[a.ID]
 		if active, ok := activeByAccount[a.ID]; ok {
 			row.CurrentPlayer = active.player
@@ -136,7 +138,7 @@ func (v ViewState) CanUnpair(i int) bool {
 	return v.Connected && i >= 0 && i < len(v.Players) && v.Players[i].State == "Offline"
 }
 func (v ViewState) CanReassign(playerIndex, accountIndex int) bool {
-	return v.CanUnpair(playerIndex) && v.CanEditAccount(accountIndex) && v.Accounts[accountIndex].State == "Available" && v.Accounts[accountIndex].CurrentPlayer == ""
+	return v.CanUnpair(playerIndex) && v.CanEditAccount(accountIndex) && accountstore.EffectiveRole(v.Accounts[accountIndex].Role) == accountstore.RoleHelper && v.Accounts[accountIndex].State == "Available" && v.Accounts[accountIndex].CurrentPlayer == ""
 }
 
 // Expired authentication does not prevent removal; assignments and active

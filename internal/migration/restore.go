@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"nethernet-multi-server/internal/accountstore"
@@ -274,7 +275,39 @@ func rebasePackState(p string, rebase func(string) (string, error)) error {
 	}
 	return writeJSON(p, state)
 }
+func disableRestoredOnline(path string) error {
+	b, e := os.ReadFile(path)
+	if os.IsNotExist(e) {
+		return nil
+	}
+	if e != nil {
+		return e
+	}
+	var state struct {
+		Version  int                        `json:"version"`
+		Settings map[string]json.RawMessage `json:"settings"`
+		Players  json.RawMessage            `json:"players"`
+	}
+	if json.Unmarshal(b, &state) != nil || state.Version != 1 {
+		return fmt.Errorf("invalid Online restore settings")
+	}
+	var servers map[string]map[string]json.RawMessage
+	if json.Unmarshal(state.Settings["servers"], &servers) != nil {
+		return fmt.Errorf("invalid Online server settings")
+	}
+	for _, server := range servers {
+		if server == nil {
+			return fmt.Errorf("invalid null Online server settings")
+		}
+		server["enabled"] = json.RawMessage("false")
+	}
+	state.Settings["servers"], _ = json.Marshal(servers)
+	return writeJSON(path, state)
+}
 func writeLaunchers(root string) error {
+	if e := disableRestoredOnline(filepath.Join(root, "MultiServer", "online", "settings.json")); e != nil {
+		return e
+	}
 	start := `$ErrorActionPreference='Stop'
 $multi=Join-Path $PSScriptRoot 'MultiServer'
 $helper=Join-Path $multi 'NetherNetMultiServer.exe'

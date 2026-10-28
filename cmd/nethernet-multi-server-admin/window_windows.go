@@ -18,6 +18,7 @@ import (
 	"github.com/lxn/win"
 	"nethernet-multi-server/internal/adminapi"
 	"nethernet-multi-server/internal/contentpacks"
+	"nethernet-multi-server/internal/online"
 	"nethernet-multi-server/internal/serversettings"
 	"nethernet-multi-server/internal/service"
 	"nethernet-multi-server/internal/sessionhistory"
@@ -48,6 +49,8 @@ func (m *accountTableModel) Value(row, col int) any {
 		return r.CurrentPlayer
 	case 5:
 		return r.Backend
+	case 6:
+		return r.Role
 	}
 	return ""
 }
@@ -98,6 +101,7 @@ type windowSpec struct{ HasAccountPool, HasConsoleUsers, HasStartStopControl boo
 func mainWindowSpec() windowSpec { return windowSpec{HasAccountPool: true, HasConsoleUsers: true} }
 
 type adminWindow struct {
+	online                                               *onlinePage
 	trayCreate                                           func(walk.Form) (*walk.NotifyIcon, error)
 	trayFailures                                         int
 	trayPrevious                                         uintptr
@@ -187,7 +191,7 @@ func runAdmin() {
 	a.closed.Store(true)
 }
 func (a *adminWindow) create() error {
-	accountPool := GroupBox{AssignTo: &a.accountPool, Title: "Account Pool", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.accounts, Model: &a.accountModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Person", Width: 120}, {Title: "Email label", Width: 180}, {Title: "Xbox gamertag", Width: 135}, {Title: "Status", Width: 85}, {Title: "Assigned / active user", Width: 135}, {Title: "Server", Width: 75}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.add, Text: "Add account", OnClicked: a.addAccount}, PushButton{AssignTo: &a.edit, Text: "Edit labels", OnClicked: a.editLabels}, PushButton{AssignTo: &a.reauth, Text: "Reauthenticate", OnClicked: a.reauthenticate}, PushButton{AssignTo: &a.remove, Text: "Remove", OnClicked: a.removeAccount}}}}}
+	accountPool := GroupBox{AssignTo: &a.accountPool, Title: "Account Pool", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.accounts, Model: &a.accountModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Person", Width: 120}, {Title: "Email label", Width: 180}, {Title: "Xbox gamertag", Width: 135}, {Title: "Status", Width: 85}, {Title: "Assigned / active user", Width: 135}, {Title: "Server", Width: 75}, {Title: "Account role", Width: 120}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.add, Text: "Add account", OnClicked: a.addAccount}, PushButton{Text: "Add broadcaster", OnClicked: a.addBroadcasterAccount}, PushButton{Text: "Account role...", OnClicked: a.setAccountRole}, PushButton{AssignTo: &a.edit, Text: "Edit labels", OnClicked: a.editLabels}, PushButton{AssignTo: &a.reauth, Text: "Reauthenticate", OnClicked: a.reauthenticate}, PushButton{AssignTo: &a.remove, Text: "Remove", OnClicked: a.removeAccount}}}}}
 	consoleUsers := GroupBox{AssignTo: &a.consoleUsers, Title: "Console Users", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.players, Model: &a.playerModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Console gamertag", Width: 130}, {Title: "Assigned account", Width: 220}, {Title: "Role (all servers)", Width: 110}, {Title: "Status", Width: 80}, {Title: "Last seen", Width: 125}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.reassign, Text: "Assign / Reassign", OnClicked: a.reassignPlayer}, PushButton{AssignTo: &a.unpair, Text: "Unpair", OnClicked: a.unpairPlayer}, PushButton{AssignTo: &a.setRole, Text: "Set role...", ToolTipText: "Set the selected console user role on all servers", OnClicked: a.setPlayerRole}}}}}
 	// Avoid nested default padding around account actions.
 	accountPool.Layout = VBox{Margins: Margins{Left: 6, Top: 6, Right: 6, Bottom: 6}, Spacing: 6}
@@ -195,7 +199,7 @@ func (a *adminWindow) create() error {
 	for _, group := range []*GroupBox{&accountPool, &consoleUsers} {
 		bar := group.Children[1].(Composite)
 		bar.Layout = VBox{MarginsZero: true, Spacing: 6}
-		bar.Children = []Widget{Composite{Layout: HBox{MarginsZero: true, Spacing: 6}, Children: bar.Children[:2]}, Composite{Layout: HBox{MarginsZero: true, Spacing: 6}, Children: bar.Children[2:]}}
+		var rows []Widget;for start:=0;start<len(bar.Children);start+=2{end:=min(start+2,len(bar.Children));rows=append(rows,Composite{Layout:HBox{MarginsZero:true,Spacing:6},Children:bar.Children[start:end]})};bar.Children=rows
 		group.Children[1] = bar
 	}
 	// Keep account actions visible above the lists at compact sizes.
@@ -239,11 +243,16 @@ func (a *adminWindow) create() error {
 		TextLabel{Text: "Persistent join and leave history. SIMULTANEOUS DROP marks different players disconnecting within five seconds."},
 		TableView{AssignTo: &a.sessions, Model: &a.sessionModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Time", Width: 170}, {Title: "Event", Width: 90}, {Title: "Console player", Width: 140}, {Title: "Assigned account", Width: 190}, {Title: "Server", Width: 170}, {Title: "Duration", Width: 80}, {Title: "Reason", Width: 250}, {Title: "Alert", Width: 160}}},
 	}}
-	w := MainWindow{Visible: !a.startHidden, AssignTo: &a.mw, Title: "NetherNet Multi-Server Administrator", Icon: 2, MinSize: Size{Width: 640, Height: 420}, Size: Size{Width: 1280, Height: 760}, Layout: VBox{}, Children: []Widget{minecraftBanner("NETHERNET", "Minecraft Server Administrator", false), Composite{Layout: HBox{}, Children: []Widget{Label{AssignTo: &a.status, Text: "Connecting to server..."}, HSpacer{}, Label{AssignTo: &a.serverSummary, Text: "Creative: 0  |  Survival: 0  |  Active: 0"}, PushButton{Text: "Refresh", OnClicked: a.refresh}}}, TabWidget{AssignTo: &a.navigation, StretchFactor: 1, Pages: []TabPage{scrollableAdminPage(serversPage), scrollableAdminPage(packsPage), scrollableAdminPage(accountsPage, &a.viewport), scrollableAdminPage(sessionsPage), scrollableAdminPage(a.migrationTab()), scrollableAdminPage(a.updatesTab())}}, GroupBox{Title: "Activity", MinSize: Size{Height: 160}, MaxSize: Size{Height: 160}, Layout: VBox{}, Children: []Widget{TextEdit{AssignTo: &a.events, ReadOnly: true, MinSize: Size{Height: 100}, Text: "Account passwords and authentication tokens are never shown here.\r\n"}}}}}
+	w := MainWindow{Visible: !a.startHidden, AssignTo: &a.mw, Title: "NetherNet Multi-Server Administrator", Icon: 2, MinSize: Size{Width: 640, Height: 420}, Size: Size{Width: 1280, Height: 760}, Layout: VBox{}, Children: []Widget{minecraftBanner("NETHERNET", "Minecraft Server Administrator", false), Composite{Layout: HBox{}, Children: []Widget{Label{AssignTo: &a.status, Text: "Connecting to server..."}, HSpacer{}, Label{AssignTo: &a.serverSummary, Text: "Creative: 0  |  Survival: 0  |  Active: 0"}, PushButton{Text: "Refresh", OnClicked: a.refresh}}}, TabWidget{AssignTo: &a.navigation, StretchFactor: 1, Pages: []TabPage{scrollableAdminPage(serversPage), scrollableAdminPage(packsPage), scrollableAdminPage(accountsPage, &a.viewport), scrollableAdminPage(sessionsPage), scrollableAdminPage(a.migrationTab()), scrollableAdminPage(a.updatesTab()), scrollableAdminPage(a.onlineTab())}}, GroupBox{Title: "Activity", MinSize: Size{Height: 160}, MaxSize: Size{Height: 160}, Layout: VBox{}, Children: []Widget{TextEdit{AssignTo: &a.events, ReadOnly: true, MinSize: Size{Height: 100}, Text: "Account passwords and authentication tokens are never shown here.\r\n"}}}}}
 	if err := w.Create(); err != nil {
 		return err
 	}
 	applyMinecraftTheme(a.mw)
+	a.navigation.CurrentIndexChanged().Attach(func() {
+		if a.navigation.CurrentIndex() == 6 && a.online != nil {
+			a.online.load()
+		}
+	})
 	installContentSizedAccountList(a.accounts, a.accountPool, &a.accountModel)
 	installContentSizedAccountList(a.players, a.consoleUsers, &a.playerModel)
 	a.mw.Starting().Attach(func() {
@@ -273,10 +282,12 @@ func (a *adminWindow) refresh() {
 		var serverStatuses []supervisor.Status
 		var storedPacks []contentpacks.InventoryItem
 		var sessionEvents []sessionhistory.Event
+		var onlineStatuses []online.Status
 		if err == nil {
 			err = a.client.Call(ctx, "servers.list", struct{}{}, &serverStatuses)
 			_ = a.client.Call(ctx, "packs.list", struct{}{}, &storedPacks)
 			_ = a.client.Call(ctx, "sessions.list", map[string]int{"limit": 1000}, &sessionEvents)
+			_ = a.client.Call(ctx, "online.status", struct{}{}, &onlineStatuses)
 		}
 		if a.closed.Load() || seq != a.refreshSeq.Load() {
 			return
@@ -301,6 +312,9 @@ func (a *adminWindow) refresh() {
 				a.updates.renderAddonOverview(selected)
 			}
 			a.sessionModel.set(BuildSessionRows(sessionEvents))
+			if a.online != nil {
+				a.online.applyStatuses(onlineStatuses)
+			}
 			_ = a.accounts.SetCurrentIndex(accountRowIndex(a.accountModel.rows, selectedAccountID))
 			_ = a.players.SetCurrentIndex(playerRowIndex(a.playerModel.rows, selectedPlayerXUID))
 			_ = a.servers.SetCurrentIndex(serverRowIndex(a.serverModel.rows, selectedServerID))
@@ -963,3 +977,4 @@ func showSignInDialog(owner walk.Form, enrollment enrollmentView, expectedGamert
 	}
 	return err
 }
+

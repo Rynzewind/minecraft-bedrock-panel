@@ -120,7 +120,7 @@ func (m *Manager) Acquire(ctx context.Context, p Player, server string) (*Lease,
 		if mapped != nil && a.ID != mapped.AccountID {
 			continue
 		}
-		if !a.Healthy || assigned[a.ID] {
+		if accountstore.EffectiveRole(a.Role) != accountstore.RoleHelper || !a.Healthy || assigned[a.ID] {
 			continue
 		}
 		if _, busy := m.activeByAccount[a.ID]; busy {
@@ -292,6 +292,9 @@ func (m *Manager) previewLocked(xuid, accountID string) (ReassignmentImpact, err
 			impact.OldGamertag = a.Gamertag
 		}
 		if a.ID == accountID {
+			if accountstore.EffectiveRole(a.Role) != accountstore.RoleHelper {
+				return ReassignmentImpact{}, errors.New("only helper accounts may be assigned to players")
+			}
 			impact.NewGamertag = a.Gamertag
 		}
 	}

@@ -16,7 +16,7 @@ func TestUpdatesHasDedicatedTabAndCompactControls(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer a.mw.Dispose()
-	if a.navigation.Pages().Len() != 6 || a.navigation.Pages().At(5).Title() != "Updates" {
+	if a.navigation.Pages().Len() != 7 || a.navigation.Pages().At(5).Title() != "Updates" {
 		t.Fatal("Updates tab missing")
 	}
 	if a.updates == nil || a.updates.install.Enabled() || a.updates.recover.Enabled() {

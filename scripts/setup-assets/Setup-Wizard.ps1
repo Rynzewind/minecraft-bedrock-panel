@@ -30,6 +30,7 @@ function Get-NNWizardPackage {
   if(-not $expected -or (Get-NNHash (Join-Path $base $name)) -ne $expected){throw ('Release checksum failed: '+$name+'. Keep the complete extracted installer folder together.')}
   if($base -eq $companions -and $name -like 'NetherNetMultiServer*'){$pairs+=$name+':'+$expected}
  }
+ if($hashes.PSObject.Properties['NetherNetOnline.exe']){$expected=$hashes.PSObject.Properties['NetherNetOnline.exe'].Value;if((Get-NNHash (Join-Path $companions 'NetherNetOnline.exe')) -ne $expected){throw 'Online companion checksum failed.'};$pairs+='NetherNetOnline.exe:'+$expected}
  [pscustomobject]@{companions=$companions;hashes=($pairs -join ',')}
 }
 function Install-NNWizardTools([string]$Root,$Package){

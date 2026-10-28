@@ -10,6 +10,7 @@ $PackageRoot = [IO.Path]::GetFullPath($PackageRoot)
 if (-not (Test-Path -LiteralPath (Join-Path $ServerRoot 'MultiServer\config.json'))) { throw 'Choose the existing Minecraft installation root.' }
 $manifest = Get-Content -LiteralPath (Join-Path $PackageRoot 'release-hashes.json') -Raw | ConvertFrom-Json
 $files = @('NetherNetMultiServer.exe','NetherNetMultiServerAdmin.exe','NetherNetMultiServerControl.exe','NetherNet-Migration-Source.zip','setup-assets/Configure-Windows.ps1','setup-assets/Network-Configuration.ps1','setup-assets/Runtime-Operations.ps1','setup-assets/Decommission-NetherNet.ps1','setup-assets/Install-Tools.ps1','Uninstall-NetherNet.cmd','Install-NetherNet.cmd','release-hashes.json','setup-assets/Setup-Wizard.ps1','setup-assets/Archive-Operations.ps1')
+if($manifest.PSObject.Properties['NetherNetOnline.exe']){$files+='NetherNetOnline.exe'}
 foreach ($file in $files) {
     $expected = $manifest.PSObject.Properties[$file].Value
     if ($file -eq 'release-hashes.json') {continue}
@@ -95,6 +96,7 @@ if ($helperRunning) {
 }
 Write-Output "Snapshot panel update installed. Rollback binaries: $backup"
 Write-Output 'The previous running/stopped state was preserved. Open the panel and use Migration / Snapshots.'
+
 
 
 

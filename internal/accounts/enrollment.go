@@ -30,6 +30,7 @@ type XboxIdentity struct {
 	Gamertag string `json:"gamertag"`
 }
 type Labels struct {
+	Role   string `json:"role,omitempty"`
 	Person string `json:"person"`
 	Email  string `json:"email,omitempty"`
 }
@@ -90,6 +91,9 @@ func BeginEnrollment(ctx context.Context, store *accountstore.Store, a Authentic
 	if strings.TrimSpace(labels.Person) == "" {
 		return DeviceCode{}, nil, errors.New("person label is required")
 	}
+	if err := accountstore.ValidateRole(labels.Role); err != nil {
+		return DeviceCode{}, nil, err
+	}
 	code, err := a.Begin(ctx)
 	if err != nil {
 		return DeviceCode{}, nil, err
@@ -137,6 +141,9 @@ func (e *Enrollment) CompleteReplacement(ctx context.Context, accountID string) 
 	return accountstore.Account{}, fmt.Errorf("account %q not found", accountID)
 }
 func addValidated(store *accountstore.Store, t *oauth2.Token, id XboxIdentity, labels Labels) (accountstore.Account, error) {
+	if err := accountstore.ValidateRole(labels.Role); err != nil {
+		return accountstore.Account{}, err
+	}
 	b, err := json.Marshal(t)
 	if err != nil {
 		return accountstore.Account{}, err
@@ -150,7 +157,7 @@ func addValidated(store *accountstore.Store, t *oauth2.Token, id XboxIdentity, l
 			return accountstore.Account{}, fmt.Errorf("Xbox account %s is already enrolled", id.Gamertag)
 		}
 	}
-	a := accountstore.Account{ID: uuid.NewString(), PersonLabel: strings.TrimSpace(labels.Person), EmailLabel: strings.TrimSpace(labels.Email), Gamertag: id.Gamertag, XUID: id.XUID, EncryptedToken: string(b), Order: len(snap.Accounts), Healthy: true}
+	a := accountstore.Account{Role: accountstore.EffectiveRole(labels.Role), ID: uuid.NewString(), PersonLabel: strings.TrimSpace(labels.Person), EmailLabel: strings.TrimSpace(labels.Email), Gamertag: id.Gamertag, XUID: id.XUID, EncryptedToken: string(b), Order: len(snap.Accounts), Healthy: true}
 	snap.Accounts = append(snap.Accounts, a)
 	if err = store.Save(snap); err != nil {
 		return accountstore.Account{}, err

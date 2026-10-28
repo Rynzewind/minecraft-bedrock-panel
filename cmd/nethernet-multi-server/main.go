@@ -26,6 +26,7 @@ import (
 	identitystore "nethernet-multi-server/internal/identity"
 	"nethernet-multi-server/internal/lan"
 	"nethernet-multi-server/internal/migration"
+	"nethernet-multi-server/internal/online"
 	"nethernet-multi-server/internal/playerpermissions"
 	proxyservice "nethernet-multi-server/internal/proxy"
 	"nethernet-multi-server/internal/serversettings"
@@ -112,6 +113,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	controller.SetServerSettings(settingsManager)
 	controller.SetPlayerPermissions(permissionsManager)
 	controller.SetSessionHistory(historyStore)
+	onlineManager, onlineError := online.New(filepath.Join(filepath.Dir(configPath), "online", "settings.json"), cfg.Servers)
+	controller.SetOnline(onlineManager, onlineError)
+	if onlineError != nil {
+		fmt.Fprintln(stderr, "Online configuration unavailable; existing LAN operation remains independent.")
+	}
 	installationRoot, _ := filepath.Abs(filepath.Join(filepath.Dir(configPath), ".."))
 	controller.SetAddonSources(addonupdates.New(filepath.Join(installationRoot, "MultiServer", "addon-update-sources.json")))
 	controller.SetAddonUpdates(addonupdates.NewCredentials(filepath.Join(installationRoot, "MultiServer", "provider-credentials", "curseforge.json"), accountstore.DPAPIProtector{Entropy: []byte("NetherNet.CurseForge.v1")}), configPath, filepath.Join(installationRoot, "MultiServer", "addon-downloads"))

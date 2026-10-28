@@ -33,6 +33,7 @@ type AccountLabelsParams struct {
 	EmailLabel  string `json:"email_label"`
 }
 type EnrollmentParams struct {
+	Role        string `json:"role,omitempty"`
 	PersonLabel string `json:"person_label"`
 	EmailLabel  string `json:"email_label"`
 }

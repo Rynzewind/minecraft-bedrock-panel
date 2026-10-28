@@ -73,7 +73,7 @@ func buildInventory(root, output string, hashContents bool) ([]FileEntry, error)
 	for _, name := range []string{"NetherNetMultiServer.exe", "NetherNetMultiServerAdmin.exe", "NetherNetMultiServerControl.exe"} {
 		roots = append(roots, "MultiServer/"+name)
 	}
-	for _, name := range []string{"MultiServer/addon-update-sources.json", "MultiServer/installation-resources.json", "StartMinecraftServers.ps1", "Watch-NetherNet.ps1", "StartMinecraftServers.bat", "StartMinecraftServers.vbs", "StopMinecraftServers.bat", "MultiServer/Run-NetherNetMultiServer.cmd", "MultiServer/Start-NetherNetMultiServer.cmd", "MultiServer/engineering-handover/NetherNet-Confirmed-Fixes-Source-20261008.zip", "MultiServer/engineering-handover/NetherNet-Migration-Source.zip"} {
+	for _, name := range []string{"MultiServer/online", "MultiServer/NetherNetOnline.exe", "MultiServer/addon-update-sources.json", "MultiServer/installation-resources.json", "StartMinecraftServers.ps1", "Watch-NetherNet.ps1", "StartMinecraftServers.bat", "StartMinecraftServers.vbs", "StopMinecraftServers.bat", "MultiServer/Run-NetherNetMultiServer.cmd", "MultiServer/Start-NetherNetMultiServer.cmd", "MultiServer/engineering-handover/NetherNet-Confirmed-Fixes-Source-20261008.zip", "MultiServer/engineering-handover/NetherNet-Migration-Source.zip"} {
 		roots = append(roots, name)
 	}
 	for _, s := range cfg.Servers {

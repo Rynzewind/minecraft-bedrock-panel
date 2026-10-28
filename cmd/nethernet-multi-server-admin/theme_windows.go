@@ -86,7 +86,7 @@ func initMinecraftResources() {
 			mcTexture, _ = walk.NewBitmapBrush(bmp)
 		}
 		mcIcons = map[string]*walk.Bitmap{}
-		for _, name := range []string{"emerald", "grass", "pickaxe", "chest", "players", "book", "update"} {
+		for _, name := range []string{"emerald", "grass", "pickaxe", "chest", "players", "book", "update", "online"} {
 			im := minecraftIcon(name)
 			b, _ := walk.NewBitmapFromImage(im)
 			mcIcons[name] = b
@@ -109,6 +109,11 @@ func minecraftIcon(name string) image.Image {
 	light := color.RGBA{127, 245, 155, 255}
 	brown := color.RGBA{124, 81, 42, 255}
 	switch name {
+	case "online":
+		rect(5, 7, 22, 18, green)
+		rect(8, 10, 16, 12, dark)
+		rect(14, 3, 4, 26, light)
+		rect(3, 14, 26, 4, light)
 	case "update":
 		rect(13, 3, 6, 15, light)
 		rect(8, 13, 16, 5, green)
