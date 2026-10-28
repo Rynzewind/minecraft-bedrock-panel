@@ -16,12 +16,15 @@ type UpdateChange struct {
 	UUID, Name string
 	Version    [3]int
 	Type       PackType
+	Actions    map[string]string
 }
 type UpdatePreview struct {
-	ID, SHA256 string
-	Servers    []string
-	Changes    []UpdateChange
-	Expires    time.Time
+	Provider          string
+	ProjectID, FileID int64
+	ID, SHA256        string
+	Servers           []string
+	Changes           []UpdateChange
+	Expires           time.Time
 }
 type updateReview struct {
 	Public            UpdatePreview
@@ -67,7 +70,7 @@ func (m *Manager) validateUpdate(in Import, selected string, targets []string, e
 		changed = false
 		for id, p := range incoming {
 			for _, d := range p.Dependencies {
-				if _, ok := incoming[d.UUID]; ok && (connected[id] || connected[d.UUID]) && (!connected[id] || !connected[d.UUID]) {
+				if _, ok := incoming[d.UUID]; ok && (connected[id] || (connected[d.UUID] && existing[id].UUID != "")) && (!connected[id] || !connected[d.UUID]) {
 					connected[id] = true
 					connected[d.UUID] = true
 					changed = true
@@ -86,6 +89,9 @@ func (m *Manager) validateUpdate(in Import, selected string, targets []string, e
 			return fmt.Errorf("duplicate target server")
 		}
 		seen[id] = true
+		if !m.state.Enabled[id][selected] {
+			return fmt.Errorf("selected pack is disabled on %s; enable it separately before updating this target", id)
+		}
 		if _, ok := m.servers[id]; !ok {
 			return fmt.Errorf("unknown server")
 		}
@@ -158,17 +164,37 @@ func (m *Manager) PreviewUpdate(path, selected string, targets []string, engines
 			os.Remove(copyPath)
 		}
 	}()
-	in, e := Inspect(copyPath, DefaultLimits)
+	in, e := inspectArchiveBytes(copyPath, b, DefaultLimits, 0)
 	if e != nil {
 		return UpdatePreview{}, e
 	}
+	m.effectiveUpdate(&in)
 	if e = m.validateUpdate(in, selected, targets, engines); e != nil {
 		return UpdatePreview{}, e
 	}
 	hash := sha256.Sum256(b)
 	p := UpdatePreview{ID: id, SHA256: hex.EncodeToString(hash[:]), Servers: append([]string(nil), targets...), Expires: time.Now().Add(30 * time.Minute)}
 	for _, v := range in.Packs {
-		p.Changes = append(p.Changes, UpdateChange{v.UUID, v.Name, v.Version, v.Type})
+		change := UpdateChange{UUID: v.UUID, Name: v.Name, Version: v.Version, Type: v.Type, Actions: map[string]string{}}
+		for _, server := range targets {
+			if m.state.Enabled[server][v.UUID] {
+				from, known := m.state.EnabledVersions[server][v.UUID]
+				if !known {
+					return UpdatePreview{}, fmt.Errorf("deployed companion version is unknown; stage explicitly first")
+				}
+				if versionGreater(from, v.Version) {
+					return UpdatePreview{}, fmt.Errorf("review would downgrade a deployed companion")
+				}
+				if from == v.Version {
+					change.Actions[server] = "retain " + versionString(from)
+				} else {
+					change.Actions[server] = "update " + versionString(from) + " -> " + versionString(v.Version)
+				}
+			} else {
+				change.Actions[server] = "enable required dependency " + versionString(v.Version)
+			}
+		}
+		p.Changes = append(p.Changes, change)
 	}
 	if m.previews == nil {
 		m.previews = map[string]updateReview{}
@@ -217,16 +243,20 @@ func (m *Manager) StageUpdateForEngines(id string, engines map[string][3]int) (r
 	if hex.EncodeToString(hash[:]) != r.Public.SHA256 {
 		return fmt.Errorf("review archive changed")
 	}
-	in, e := Inspect(r.Path, DefaultLimits)
+	in, e := inspectArchiveBytes(r.Path, b, DefaultLimits, 0)
 	if e != nil {
 		return e
 	}
+	m.effectiveUpdate(&in)
 	if e = m.validateUpdate(in, r.Selected, r.Public.Servers, r.Engines); e != nil {
 		return e
 	}
 	var newDirs []string
 	for _, p := range in.Packs {
-		dir := filepath.Join(m.root, "packs", p.UUID, versionString(p.Version))
+		dir, pathErr := m.managedPackPath(p.UUID, p.Version)
+		if pathErr != nil {
+			return pathErr
+		}
 		if _, e := os.Stat(dir); os.IsNotExist(e) {
 			newDirs = append(newDirs, dir)
 		}
@@ -247,6 +277,9 @@ func (m *Manager) StageUpdateForEngines(id string, engines map[string][3]int) (r
 	}()
 	for i := range in.Packs {
 		in.Packs[i].SourceArchive = r.Path
+		if len(in.Packs[i].ArchiveData) == 0 {
+			in.Packs[i].ArchiveData = b
+		}
 	}
 	stored, e := m.importInspectedLocked(in.Packs, false)
 	if e != nil {
@@ -258,4 +291,15 @@ func (m *Manager) StageUpdateForEngines(id string, engines map[string][3]int) (r
 		}
 	}
 	return m.save()
+}
+
+func (m *Manager) effectiveUpdate(in *Import) {
+	for i, p := range in.Packs {
+		for _, old := range m.state.Packs {
+			if old.UUID == p.UUID && old.Version == p.Version {
+				in.Packs[i] = old.Pack
+				break
+			}
+		}
+	}
 }

@@ -3,6 +3,7 @@ package contentpacks
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -104,6 +105,23 @@ func parseManifest(b []byte, root string) (Pack, error) {
 	if raw.Header.Name == "" || raw.Header.UUID == "" {
 		return Pack{}, fmt.Errorf("manifest header name and uuid are required")
 	}
+	if !validPackUUID(raw.Header.UUID) {
+		return Pack{}, fmt.Errorf("manifest UUID must be a canonical UUID")
+	}
+	raw.Header.UUID = strings.ToLower(raw.Header.UUID)
+	for _, v := range raw.Header.Version {
+		if v < 0 {
+			return Pack{}, fmt.Errorf("negative pack version")
+		}
+	}
+	for i, d := range raw.Dependencies {
+		if d.UUID != "" {
+			if !validPackUUID(d.UUID) {
+				return Pack{}, fmt.Errorf("dependency UUID must be canonical")
+			}
+			raw.Dependencies[i].UUID = strings.ToLower(d.UUID)
+		}
+	}
 	p := Pack{Name: raw.Header.Name, Description: raw.Header.Description, UUID: raw.Header.UUID, Version: raw.Header.Version, MinEngineVersion: raw.Header.Min, Root: root, Dependencies: raw.Dependencies}
 	for _, m := range raw.Modules {
 		if m.Type == "data" || m.Type == "script" {
@@ -118,3 +136,7 @@ func parseManifest(b []byte, root string) (Pack, error) {
 	}
 	return p, nil
 }
+
+var packUUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func validPackUUID(id string) bool { return packUUIDPattern.MatchString(id) }

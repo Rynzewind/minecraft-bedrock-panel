@@ -160,6 +160,9 @@ func (p *updatesPage) selectPack() {
 		state := "disabled"
 		if s.Enabled {
 			state = versionText(s.Version)
+			if !s.VersionKnown {
+				state = "unknown (explicit version selection required)"
+			}
 		}
 		fmt.Fprintf(&b, "%s: %s  ", server, state)
 		if s.Pending != nil {
@@ -204,8 +207,9 @@ func (p *updatesPage) manualChecked() {
 }
 
 type addonResult struct {
-	Project addonupdates.Project
-	Files   []addonupdates.ReleaseFile
+	AcknowledgedFileID int64
+	Project            addonupdates.Project
+	Files              []addonupdates.ReleaseFile
 }
 
 func (p *updatesPage) checkAddon() {
@@ -214,7 +218,11 @@ func (p *updatesPage) checkAddon() {
 		p.addonFiles = result.Files
 		names := []string{}
 		for _, f := range result.Files {
-			names = append(names, fmt.Sprintf("%s — %s — file %d", f.DisplayName, f.FileDate.Local().Format("02 Jan 2006"), f.ID))
+			label := fmt.Sprintf("%s — %s — file %d", f.DisplayName, f.FileDate.Local().Format("02 Jan 2006"), f.ID)
+			if f.ID == result.AcknowledgedFileID {
+				label += " (previously staged)"
+			}
+			names = append(names, label)
 		}
 		if len(names) == 0 {
 			names = []string{"No available releases for this channel"}
@@ -294,14 +302,27 @@ func (p *updatesPage) previewAddon(method string, params any) {
 		fmt.Fprintf(&b, "Stage these exact versions for %s?\r\n\r\n", strings.Join(preview.Servers, ", "))
 		for _, change := range preview.Changes {
 			fmt.Fprintf(&b, "%s (%s) %s\r\n%s\r\n", change.Name, change.Type, versionText(change.Version), change.UUID)
+			for _, server := range preview.Servers {
+				fmt.Fprintf(&b, "  %s: %s\r\n", server, change.Actions[server])
+			}
+		}
+		if preview.FileID > 0 {
+			fmt.Fprintf(&b, "\r\nCurseForge project %d, file %d\r\n", preview.ProjectID, preview.FileID)
 		}
 		fmt.Fprintf(&b, "\r\nArchive SHA-256: %s\r\n\r\nRunning server folders are preserved. Apply later from Content Packs while stopped. Add-on compatibility beyond manifest requirements is not guaranteed.", preview.SHA256)
 		if walk.MsgBox(p.a.mw, "Review add-on update", b.String(), walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
 			p.addonLog.SetText("Review cancelled. No update staged.")
 			return
 		}
-		p.addonCall("Staging reviewed versions...", "addons.stage", map[string]string{"PreviewID": preview.ID}, nil, func() {
+		var result struct {
+			Staged  bool
+			Warning string
+		}
+		p.addonCall("Staging reviewed versions...", "addons.stage", map[string]string{"PreviewID": preview.ID}, &result, func() {
 			p.addonLog.SetText("Update staged. Use Content Packs to apply when stopped; the other server retains its deployed versions.")
+			if result.Warning != "" {
+				p.addonLog.SetText(result.Warning)
+			}
 			p.loadSources()
 		})
 	})

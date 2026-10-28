@@ -13,12 +13,19 @@ import (
 	"time"
 )
 
+type addonOrigin struct {
+	UUID              string
+	Source            addonupdates.Source
+	ProjectID, FileID int64
+	Expires           time.Time
+}
 type addonCheckResult struct {
-	UUID    string
-	Project addonupdates.Project
-	Files   []addonupdates.ReleaseFile
-	Checked time.Time
-	Source  addonupdates.Source
+	AcknowledgedFileID int64
+	UUID               string
+	Project            addonupdates.Project
+	Files              []addonupdates.ReleaseFile
+	Checked            time.Time
+	Source             addonupdates.Source
 }
 type updatePacks interface {
 	PreviewUpdate(string, string, []string, map[string][3]int) (contentpacks.UpdatePreview, error)
@@ -30,6 +37,7 @@ func (c *Controller) SetAddonUpdates(credentials *addonupdates.Credentials, conf
 	c.addonConfigPath = configPath
 	c.addonStaging = staging
 	c.addonResults = map[string]addonCheckResult{}
+	c.addonOrigins = map[string]addonOrigin{}
 }
 func (c *Controller) validAddon(id string) bool {
 	if c.packs == nil {
@@ -115,7 +123,7 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 		if e != nil {
 			return nil, e
 		}
-		result := addonCheckResult{req.UUID, project, files, time.Now(), src}
+		result := addonCheckResult{UUID: req.UUID, Project: project, Files: files, Checked: time.Now(), Source: src, AcknowledgedFileID: src.LastFileID}
 		c.mu.Lock()
 		c.addonResults[req.UUID] = result
 		c.mu.Unlock()
@@ -156,7 +164,26 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 		defer os.Remove(path)
 		req.Path = path
 		b, _ := json.Marshal(req)
-		return c.Handle(ctx, "addons.preview", b)
+		value, e := c.Handle(ctx, "addons.preview", b)
+		if e != nil {
+			return nil, e
+		}
+		preview, ok := value.(contentpacks.UpdatePreview)
+		if !ok {
+			return nil, fmt.Errorf("invalid update preview")
+		}
+		c.mu.Lock()
+		for id, origin := range c.addonOrigins {
+			if time.Now().After(origin.Expires) {
+				delete(c.addonOrigins, id)
+			}
+		}
+		c.addonOrigins[preview.ID] = addonOrigin{req.UUID, src, result.Project.ID, file.ID, preview.Expires}
+		c.mu.Unlock()
+		preview.Provider = "curseforge"
+		preview.ProjectID = result.Project.ID
+		preview.FileID = file.ID
+		return preview, nil
 	case "addons.preview":
 		manager, ok := c.packs.(updatePacks)
 		if !ok {
@@ -176,7 +203,31 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 		if e != nil {
 			return nil, e
 		}
-		return nil, manager.StageUpdateForEngines(req.PreviewID, engines)
+		c.mu.Lock()
+		origin, hasOrigin := c.addonOrigins[req.PreviewID]
+		c.mu.Unlock()
+		if hasOrigin {
+			rows, e := c.addonSources.ListRecords()
+			if e != nil {
+				return nil, e
+			}
+			r := rows[origin.UUID]
+			if time.Now().After(origin.Expires) || r.URL != origin.Source.URL || r.ProjectID != origin.Source.ProjectID || r.Channel != origin.Source.Channel || r.Provider != origin.Source.Provider {
+				return nil, fmt.Errorf("provider source changed or review expired; preview again")
+			}
+		}
+		if e = manager.StageUpdateForEngines(req.PreviewID, engines); e != nil {
+			return nil, e
+		}
+		if hasOrigin {
+			c.mu.Lock()
+			delete(c.addonOrigins, req.PreviewID)
+			c.mu.Unlock()
+			if e = c.addonSources.Acknowledge(origin.UUID, origin.Source, origin.ProjectID, origin.FileID); e != nil {
+				return map[string]any{"Staged": true, "Warning": "Update staged, but release provenance could not be saved. Check source settings before the next API check."}, nil
+			}
+		}
+		return map[string]any{"Staged": true}, nil
 	}
 	return nil, fmt.Errorf("unknown add-on update operation")
 }

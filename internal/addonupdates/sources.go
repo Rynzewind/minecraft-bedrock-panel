@@ -232,3 +232,24 @@ func (s *Store) MarkResult(id string, expected Source, state string) error {
 
 // ProtectStaging creates a user-private local directory for untrusted archives.
 func ProtectStaging(path string) error { return privateDirectory(path) }
+
+func (s *Store) Acknowledge(id string, expected Source, projectID, fileID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rows, e := s.load()
+	if e != nil {
+		return e
+	}
+	r := rows[id]
+	if r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel {
+		return fmt.Errorf("source changed; staged archive provenance was not saved")
+	}
+	r.ProjectID = projectID
+	r.LastFileID = fileID
+	rows[id] = r
+	b, e := json.MarshalIndent(sourceDisk{Version: 2, Sources: rows}, "", "  ")
+	if e != nil {
+		return e
+	}
+	return atomicWrite(s.path, b)
+}

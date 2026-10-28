@@ -1,7 +1,7 @@
 package setup
 
 var ScriptHashes = map[string]string{
-	"Archive-Operations.ps1":     "69a7faabbc245fdf2b86ee8e5c7e1219b7e6633b31ba7f5c3fada919d6e724c6",
+	"Archive-Operations.ps1":     "04f8b04a3bf1c906f96f968d6b9dbe20afefe24a2d749e3ccce414686907758c",
 	"Configure-Windows.ps1":      "490f60a83813813e73213caf3d7f0364cae4e99c7c5ea0bde99cb8dad24d9075",
 	"Decommission-NetherNet.ps1": "ceef595040c5e090580d69dcfd665ed405221688f048b1c227d1f6cd2dbd0c62",
 	"Install-Tools.ps1":          "fa5f5e7a4091a7e3d55f3a00e15b9fd49d9823454cfdfad9c5cf4fe99bcf4417",

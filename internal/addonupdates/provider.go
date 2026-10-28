@@ -117,8 +117,15 @@ func (p *Provider) game(ctx context.Context) (int64, error) {
 	}
 	return 0, fmt.Errorf("CurseForge Bedrock game was not found; use manual source downloads")
 }
-func (p *Provider) Test(ctx context.Context) error { _, e := p.game(ctx); return e }
+func (p *Provider) Test(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	_, e := p.game(ctx)
+	return e
+}
 func (p *Provider) Check(ctx context.Context, s Source) (Project, []ReleaseFile, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
 	if s.Provider != "curseforge" {
 		return Project{}, nil, fmt.Errorf("select a CurseForge Bedrock source")
 	}
@@ -195,6 +202,8 @@ func (p *Provider) Check(ctx context.Context, s Source) (Project, []ReleaseFile,
 	return project, files, nil
 }
 func (p *Provider) Download(ctx context.Context, project Project, f ReleaseFile, dir string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
 	if project.AllowModDistribution != nil && !*project.AllowModDistribution {
 		return "", fmt.Errorf("author disabled third-party downloads; use Open source")
 	}

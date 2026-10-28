@@ -89,7 +89,7 @@ function Restore-NNSnapshot([string]$ArchivePath,[string]$Destination,[string]$P
    foreach($property in @('executable','world_directory')){$relative=$server.process.$property.Substring($destinationPath.Length+1);if(-not(Test-Path -LiteralPath (Join-Path $stage $relative))){throw 'A configured executable or world is missing from the snapshot.'}}
   }
   Write-NNJson $configPath $cfg
-  $statePath=Join-Path $stage 'MultiServer/content-staging/state.json';if(Test-Path $statePath){$state=Get-Content $statePath -Raw -Encoding UTF8|ConvertFrom-Json;foreach($pack in $state.packs){if($pack.PSObject.Properties['installed_path']){$pack.installed_path=Convert-NNMigrationPath $pack.installed_path $snapshot.manifest.source_root $destinationPath}};Write-NNJson $statePath $state}
+  $statePath=Join-Path $stage 'MultiServer/content-staging/state.json';if(Test-Path $statePath){$state=Get-Content $statePath -Raw -Encoding UTF8|ConvertFrom-Json;foreach($pack in @($state.packs)+@($state.versions)){if($pack.PSObject.Properties['installed_path']){$pack.installed_path=Convert-NNMigrationPath $pack.installed_path $snapshot.manifest.source_root $destinationPath}};Write-NNJson $statePath $state}
   Import-NNPortableAccounts $stage;Write-NNPortableLaunchers $stage
   foreach($name in @('NetherNetMultiServer.exe','NetherNetMultiServerAdmin.exe','NetherNetMultiServerControl.exe')){if(-not(Test-Path -LiteralPath (Join-Path $stage ('MultiServer/'+$name)))){throw 'A required application executable is missing.'}}
   [IO.File]::WriteAllText((Join-Path $stage 'migration-activation-required'),'Complete reviewed Windows configuration before LAN advertising.')

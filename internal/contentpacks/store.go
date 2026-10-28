@@ -18,6 +18,7 @@ type StoredPack struct {
 	InstalledPath string `json:"installed_path"`
 }
 type AssignmentState struct {
+	VersionKnown   bool   `json:"version_known"`
 	Version        [3]int `json:"version"`
 	PendingVersion [3]int `json:"pending_version,omitempty"`
 	Enabled        bool   `json:"enabled"`
@@ -284,7 +285,10 @@ func (m *Manager) importInspectedLocked(incomingPacks []Pack, persist bool) (res
 	}
 	var err error
 	for _, p := range toInstall {
-		dest := filepath.Join(m.root, "packs", p.UUID, fmt.Sprintf("%d.%d.%d", p.Version[0], p.Version[1], p.Version[2]))
+		dest, pathErr := m.managedPackPath(p.UUID, p.Version)
+		if pathErr != nil {
+			return nil, pathErr
+		}
 		tmp := dest + ".tmp"
 		if err = os.RemoveAll(tmp); err != nil {
 			return nil, err
@@ -484,6 +488,7 @@ func (m *Manager) InventoryState() []InventoryItem {
 		item := InventoryItem{StoredPack: pack, Servers: map[string]AssignmentState{}}
 		for serverID := range m.servers {
 			state := AssignmentState{Enabled: m.state.Enabled[serverID][pack.UUID], Version: m.state.EnabledVersions[serverID][pack.UUID]}
+			_, state.VersionKnown = m.state.EnabledVersions[serverID][pack.UUID]
 			for _, operation := range m.state.Pending {
 				if operation.ServerID == serverID && operation.PackUUID == pack.UUID {
 					pending := operation.Enable

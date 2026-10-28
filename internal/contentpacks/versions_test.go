@@ -124,3 +124,22 @@ func TestLegacyVersionsReadDeployedSelection(t *testing.T) {
 		t.Fatalf("legacy selection changed: %v", v)
 	}
 }
+
+func TestLegacyMissingProvenanceCannotUpgradeImplicitly(t *testing.T) {
+	m, servers := versionFixture(t)
+	m.ImportArchive(versionArchive(t, 2))
+	m.state.EnabledVersions = nil
+	m.state.Versions = nil
+	m.save()
+	os.Remove(filepath.Join(servers[1].Process.WorldDirectory, "world_behavior_packs.json"))
+	reopened, e := NewManager(m.root, servers)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = reopened.StageResourcePolicy("survival", true); e != nil {
+		t.Fatal(e)
+	}
+	if e = reopened.Apply("survival"); e == nil {
+		t.Fatal("unknown deployed version upgraded implicitly")
+	}
+}

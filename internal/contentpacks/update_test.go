@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -119,5 +120,46 @@ func TestUpdateBundleRequiresConnectedDependencies(t *testing.T) {
 	}
 	if e = m.Apply("creative"); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestUpdateRejectsEscapingUUID(t *testing.T) {
+	bad := strings.Replace(behaviorManifest, updatePackID, "../../outside", 1)
+	if _, e := Inspect(zipFile(t, map[string]string{"manifest.json": bad}), DefaultLimits); e == nil {
+		t.Fatal("unsafe UUID accepted")
+	}
+}
+func TestUpdateRetainedManifestIsAuthoritative(t *testing.T) {
+	m, _ := versionFixture(t)
+	companion := "44444444-4444-4444-4444-444444444444"
+	retained := strings.ReplaceAll(behaviorManifest, updatePackID, companion)
+	retained = strings.Replace(retained, "[1,26,0]", "[1,99,0]", 1)
+	if _, e := m.ImportArchive(zipFile(t, map[string]string{"manifest.json": retained})); e != nil {
+		t.Fatal(e)
+	}
+	main := strings.Replace(behaviorManifest, "[1,2,3]", "[2,0,0]", 1)
+	main = strings.TrimSuffix(main, "}") + fmt.Sprintf(`,"dependencies":[{"uuid":"%s","version":[1,2,3]}]}`, companion)
+	fake := strings.ReplaceAll(behaviorManifest, updatePackID, companion)
+	if _, e := m.PreviewUpdate(zipFile(t, map[string]string{"a/manifest.json": main, "b/manifest.json": fake}), updatePackID, []string{"creative"}, map[string][3]int{"creative": {1, 26, 60}}); e == nil {
+		t.Fatal("discarded manifest hid retained engine requirement")
+	}
+}
+func TestUpdateCannotEnableDisabledTarget(t *testing.T) {
+	m, _ := versionFixture(t)
+	m.Stage("survival", updatePackID, false)
+	m.Apply("survival")
+	if _, e := m.PreviewUpdate(versionArchive(t, 2), updatePackID, []string{"creative", "survival"}, map[string][3]int{"creative": {1, 26, 60}, "survival": {1, 26, 60}}); e == nil {
+		t.Fatal("disabled target accepted without enablement review")
+	}
+}
+
+func TestNewDependentCannotMasqueradeAsRequiredCompanion(t *testing.T) {
+	m, _ := versionFixture(t)
+	newID := "44444444-4444-4444-4444-444444444444"
+	main := strings.Replace(behaviorManifest, "[1,2,3]", "[2,0,0]", 1)
+	extra := strings.ReplaceAll(behaviorManifest, updatePackID, newID)
+	extra = strings.TrimSuffix(extra, "}") + fmt.Sprintf(`,"dependencies":[{"uuid":"%s","version":[2,0,0]}]}`, updatePackID)
+	if _, e := m.PreviewUpdate(zipFile(t, map[string]string{"a/manifest.json": main, "b/manifest.json": extra}), updatePackID, []string{"creative"}, map[string][3]int{"creative": {1, 26, 60}}); e == nil {
+		t.Fatal("new unrelated dependent accepted")
 	}
 }

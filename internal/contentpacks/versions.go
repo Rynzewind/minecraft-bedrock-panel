@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 func cloneState(s persistentState) persistentState {
@@ -58,7 +59,7 @@ func (m *Manager) ensureVersions() error {
 			if m.state.Enabled[id][p.UUID] {
 				v, ok := actual[p.UUID]
 				if !ok {
-					v = p.Version
+					continue
 				}
 				m.state.EnabledVersions[id][p.UUID] = v
 			}
@@ -142,4 +143,25 @@ func (m *Manager) resolvedPacks(serverID string, enabled map[string]bool) ([]Sto
 		}
 	}
 	return out, versions, nil
+}
+
+func (m *Manager) managedPackPath(id string, version [3]int) (string, error) {
+	if !validPackUUID(id) {
+		return "", fmt.Errorf("invalid stored pack UUID")
+	}
+	for _, v := range version {
+		if v < 0 {
+			return "", fmt.Errorf("invalid stored pack version")
+		}
+	}
+	base, e := filepath.Abs(filepath.Join(m.root, "packs"))
+	if e != nil {
+		return "", e
+	}
+	dest := filepath.Join(base, id, versionString(version))
+	rel, e := filepath.Rel(base, dest)
+	if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) || filepath.IsAbs(rel) {
+		return "", fmt.Errorf("pack path escapes library")
+	}
+	return dest, nil
 }

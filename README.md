@@ -12,7 +12,7 @@ A Windows desktop administrator for personal Minecraft Bedrock servers, with Net
 - Import and stage local Bedrock add-ons independently for each server.
 - Create protected snapshots, schedule backups and restore to a fresh installation folder.
 - Check official stable server updates, verify protocol compatibility, back up before replacement and show update progress.
-- Save add-on project links. Automatic CurseForge update checks are not enabled.
+- Review local add-on updates or check CurseForge releases on demand with your own API key; verify archives before staging exact versions for selected servers.
 - Run in the Windows tray, with a maximized panel and layouts that support monitor scaling and scrolling.
 
 The current helper supports **Minecraft Bedrock 26.60, protocol 2225**. A future Minecraft protocol change needs a matching NetherNet helper release; changing an advertised version alone is insufficient.
@@ -28,6 +28,8 @@ The current helper supports **Minecraft Bedrock 26.60, protocol 2225**. A future
 The website hosts project information and download links. The panel and Minecraft servers run locally on Windows. Obtain Bedrock Dedicated Server from [Minecraft's official download page](https://www.minecraft.net/en-us/download/server/bedrock); Mojang server binaries and third-party add-ons are not bundled in this repository.
 
 Back up worlds before maintenance. Do not restore over an existing live world. A world opened by a newer Minecraft engine must not be run against an older engine; recovery uses the verified pre-update backup and retains displaced data.
+
+See [Add-on updates](docs/ADDON-UPDATES.md) for manual review, protected API-key settings and release staging.
 
 ## Build from source
 
@@ -66,3 +68,4 @@ Worlds, player/account stores, sign-in tokens, server identity keys, local confi
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The vendored Gophertunnel MIT license is preserved. The upstream code and its local modifications remain in `third_party/gophertunnel`; dependency versions are pinned in `go.mod` and `go.sum`.
 
 This is an independent community project and is not affiliated with Mojang Studios or Microsoft.
+

@@ -3,6 +3,7 @@ package migration
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -27,5 +28,17 @@ func TestAddonSourcesIncludedButProviderCredentialsExcluded(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("source metadata omitted")
+	}
+}
+
+func TestRetainedVersionCatalogRebased(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "state.json")
+	os.WriteFile(p, []byte(`{"packs":[{"installed_path":"old/current"}],"versions":[{"installed_path":"old/retained"}],"enabled_versions":{"creative":{"id":[1,0,0]}}}`), 0600)
+	if e := rebasePackState(p, func(v string) (string, error) { return "new/" + v, nil }); e != nil {
+		t.Fatal(e)
+	}
+	b, _ := os.ReadFile(p)
+	if !strings.Contains(string(b), "new/old/retained") || !strings.Contains(string(b), "enabled_versions") {
+		t.Fatalf("catalog lost: %s", b)
 	}
 }
