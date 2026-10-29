@@ -101,45 +101,48 @@ type windowSpec struct{ HasAccountPool, HasConsoleUsers, HasStartStopControl boo
 func mainWindowSpec() windowSpec { return windowSpec{HasAccountPool: true, HasConsoleUsers: true} }
 
 type adminWindow struct {
-	online                                               *onlinePage
-	trayCreate                                           func(walk.Form) (*walk.NotifyIcon, error)
-	trayFailures                                         int
-	trayPrevious                                         uintptr
-	fleetBusy                                            atomic.Bool
-	fleetState                                           *fleetRuntime
-	tray                                                 *walk.NotifyIcon
-	trayActions                                          []*walk.Action
-	quitting                                             bool
-	startHidden                                          bool
-	updates                                              *updatesPage
-	migration                                            *migrationPage
-	mw                                                   *walk.MainWindow
-	status, serverSummary                                *walk.Label
-	accounts, players                                    *walk.TableView
-	accountPool, consoleUsers                            *walk.GroupBox
-	servers, packs, sessions                             *walk.TableView
-	navigation                                           *walk.TabWidget
-	viewport                                             *walk.ScrollView
-	events                                               *walk.TextEdit
-	serverLog                                            *walk.TextEdit
+	online                                                             *onlinePage
+	trayCreate                                                         func(walk.Form) (*walk.NotifyIcon, error)
+	trayFailures                                                       int
+	trayPrevious                                                       uintptr
+	fleetBusy                                                          atomic.Bool
+	fleetState                                                         *fleetRuntime
+	tray                                                               *walk.NotifyIcon
+	trayActions                                                        []*walk.Action
+	quitting                                                           bool
+	startHidden                                                        bool
+	updates                                                            *updatesPage
+	migration                                                          *migrationPage
+	mw                                                                 *walk.MainWindow
+	status, serverSummary                                              *walk.Label
+	accounts, players                                                  *walk.TableView
+	broadcasters                                                       *walk.TableView
+	broadcasterModel                                                   accountTableModel
+	helperToggle, broadcasterToggle                                    *walk.PushButton
+	accountPool, consoleUsers                                          *walk.GroupBox
+	servers, packs, sessions                                           *walk.TableView
+	navigation                                                         *walk.TabWidget
+	viewport                                                           *walk.ScrollView
+	events                                                             *walk.TextEdit
+	serverLog                                                          *walk.TextEdit
 	add, edit, reauth, remove, reassign, unpair, setRole, onlineAccess *walk.PushButton
-	start, stop, restart                                 *walk.PushButton
-	startAll, stopAll, restartAll                        *walk.PushButton
-	serverSettingsButton                                 *walk.PushButton
-	uninstallPackButton                                  *walk.PushButton
-	applyCreative, applySurvival                         *walk.PushButton
-	cancelCreative, cancelSurvival                       *walk.PushButton
-	accountModel                                         accountTableModel
-	playerModel                                          playerTableModel
-	serverModel                                          serverTableModel
-	packModel                                            packTableModel
-	sessionModel                                         sessionTableModel
-	client                                               pipeClient
-	state                                                ViewState
-	closed                                               atomic.Bool
-	refreshSeq                                           atomic.Uint64
-	eventMu                                              sync.Mutex
-	lastError                                            string
+	start, stop, restart                                               *walk.PushButton
+	startAll, stopAll, restartAll                                      *walk.PushButton
+	serverSettingsButton                                               *walk.PushButton
+	uninstallPackButton                                                *walk.PushButton
+	applyCreative, applySurvival                                       *walk.PushButton
+	cancelCreative, cancelSurvival                                     *walk.PushButton
+	accountModel                                                       accountTableModel
+	playerModel                                                        playerTableModel
+	serverModel                                                        serverTableModel
+	packModel                                                          packTableModel
+	sessionModel                                                       sessionTableModel
+	client                                                             pipeClient
+	state                                                              ViewState
+	closed                                                             atomic.Bool
+	refreshSeq                                                         atomic.Uint64
+	eventMu                                                            sync.Mutex
+	lastError                                                          string
 }
 
 func runAdmin() {
@@ -191,7 +194,7 @@ func runAdmin() {
 	a.closed.Store(true)
 }
 func (a *adminWindow) create() error {
-	accountPool := GroupBox{AssignTo: &a.accountPool, Title: "Account Pool", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.accounts, Model: &a.accountModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Person", Width: 120}, {Title: "Email label", Width: 180}, {Title: "Xbox gamertag", Width: 135}, {Title: "Status", Width: 85}, {Title: "Assigned / active user", Width: 135}, {Title: "Server", Width: 75}, {Title: "Account role", Width: 120}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.add, Text: "Add account", OnClicked: a.addAccount}, PushButton{Text: "Add broadcaster", OnClicked: a.addBroadcasterAccount}, PushButton{Text: "Account role...", OnClicked: a.setAccountRole}, PushButton{AssignTo: &a.onlineAccess, Text: "Online access...", ToolTipText: "Grant selected account access to Creative and/or Survival Friends connections", OnClicked: a.grantSelectedAccountOnlineAccess}, PushButton{AssignTo: &a.edit, Text: "Edit labels", OnClicked: a.editLabels}, PushButton{AssignTo: &a.reauth, Text: "Reauthenticate", OnClicked: a.reauthenticate}, PushButton{AssignTo: &a.remove, Text: "Remove", OnClicked: a.removeAccount}}}}}
+	accountPool := GroupBox{AssignTo: &a.accountPool, Title: "Account Pool", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.accounts, Model: &a.accountModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Person", Width: 120}, {Title: "Email label", Width: 180}, {Title: "Xbox gamertag", Width: 135}, {Title: "Status", Width: 85}, {Title: "Assigned / active user", Width: 135}, {Title: "Server", Width: 75}, {Title: "Account role", Width: 120}}, OnCurrentIndexChanged: func() { a.accountSelectionChanged(false) }}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.add, Text: "Add account", OnClicked: a.addAccount}, PushButton{Text: "Add broadcaster", OnClicked: a.addBroadcasterAccount}, PushButton{Text: "Account role...", OnClicked: a.setAccountRole}, PushButton{AssignTo: &a.onlineAccess, Text: "Online access...", ToolTipText: "Grant selected account access to Creative and/or Survival Friends connections", OnClicked: a.grantSelectedAccountOnlineAccess}, PushButton{AssignTo: &a.edit, Text: "Edit labels", OnClicked: a.editLabels}, PushButton{AssignTo: &a.reauth, Text: "Reauthenticate", OnClicked: a.reauthenticate}, PushButton{AssignTo: &a.remove, Text: "Remove", OnClicked: a.removeAccount}}}}}
 	consoleUsers := GroupBox{AssignTo: &a.consoleUsers, Title: "Console Users", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.players, Model: &a.playerModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Console gamertag", Width: 130}, {Title: "Assigned account", Width: 220}, {Title: "Role (all servers)", Width: 110}, {Title: "Status", Width: 80}, {Title: "Last seen", Width: 125}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.reassign, Text: "Assign / Reassign", OnClicked: a.reassignPlayer}, PushButton{AssignTo: &a.unpair, Text: "Unpair", OnClicked: a.unpairPlayer}, PushButton{AssignTo: &a.setRole, Text: "Set role...", ToolTipText: "Set the selected console user role on all servers", OnClicked: a.setPlayerRole}}}}}
 	// Avoid nested default padding around account actions.
 	accountPool.Layout = VBox{Margins: Margins{Left: 6, Top: 6, Right: 6, Bottom: 6}, Spacing: 6}
@@ -210,7 +213,15 @@ func (a *adminWindow) create() error {
 	// Keep account actions visible above the lists at compact sizes.
 	accountPool.Children[0], accountPool.Children[1] = accountPool.Children[1], accountPool.Children[0]
 	consoleUsers.Children[0], consoleUsers.Children[1] = consoleUsers.Children[1], consoleUsers.Children[0]
-	accountPool.Children = append(accountPool.Children, VSpacer{})
+	helperTable := accountPool.Children[1].(TableView)
+	broadcasterTable := helperTable
+	broadcasterTable.AssignTo = &a.broadcasters
+	broadcasterTable.Model = &a.broadcasterModel
+	broadcasterTable.Visible = false
+	broadcasterTable.OnCurrentIndexChanged = func() { a.accountSelectionChanged(true) }
+	accountPool.Children = []Widget{accountPool.Children[0],
+		PushButton{AssignTo: &a.helperToggle, Text: "Helpers (expanded)", OnClicked: func() { a.toggleAccountSection(false) }}, helperTable,
+		PushButton{AssignTo: &a.broadcasterToggle, Text: "Broadcasters (collapsed)", OnClicked: func() { a.toggleAccountSection(true) }}, broadcasterTable, VSpacer{}}
 	consoleUsers.Children = append(consoleUsers.Children, VSpacer{})
 	accountsPage := TabPage{Title: "Accounts", Layout: VBox{}, Children: []Widget{HSplitter{Children: []Widget{accountPool, consoleUsers}}}}
 	serversPage := TabPage{Title: "Servers", Layout: VBox{}, Children: []Widget{TableView{MinSize: Size{Height: 120}, AssignTo: &a.servers, Model: &a.serverModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Server", Width: 260}, {Title: "State", Width: 120}, {Title: "Players", Width: 70}, {Title: "PID", Width: 90}, {Title: "Changes", Width: 130}}, OnCurrentIndexChanged: a.updateManagementActions}, Composite{Layout: HBox{MarginsZero: true, Spacing: 6}, Children: []Widget{PushButton{AssignTo: &a.start, Text: "Start", Background: SolidColorBrush{Color: walk.RGB(120, 200, 120)}, OnClicked: func() { a.serverAction("server.start") }}, PushButton{AssignTo: &a.stop, Text: "Stop", Background: SolidColorBrush{Color: walk.RGB(220, 120, 120)}, OnClicked: func() { a.serverAction("server.stop") }}, PushButton{AssignTo: &a.restart, Text: "Restart", Background: SolidColorBrush{Color: walk.RGB(235, 190, 90)}, OnClicked: func() { a.serverAction("server.restart") }}, PushButton{AssignTo: &a.serverSettingsButton, Text: "Settings...", ToolTipText: "Server Settings", OnClicked: a.openServerSettings}}}, Composite{Layout: HBox{MarginsZero: true, Spacing: 6}, Children: []Widget{PushButton{AssignTo: &a.startAll, Text: "Start All Servers", OnClicked: func() { a.allServerAction("server.start") }}, PushButton{AssignTo: &a.stopAll, Text: "Stop All Servers", OnClicked: func() { a.allServerAction("server.stop") }}, PushButton{AssignTo: &a.restartAll, Text: "Restart All Servers", OnClicked: func() { a.allServerAction("server.restart") }}}}, TextEdit{AssignTo: &a.serverLog, ReadOnly: true, MinSize: Size{Height: 32}, MaxSize: Size{Height: 48}}}}
@@ -259,6 +270,7 @@ func (a *adminWindow) create() error {
 		}
 	})
 	installContentSizedAccountList(a.accounts, a.accountPool, &a.accountModel)
+	installContentSizedAccountList(a.broadcasters, a.accountPool, &a.broadcasterModel)
 	installContentSizedAccountList(a.players, a.consoleUsers, &a.playerModel)
 	a.mw.Starting().Attach(func() {
 		fitAdministratorToWorkArea(a.mw)
@@ -307,7 +319,9 @@ func (a *adminWindow) refresh() {
 			a.state = BuildViewState(status)
 			a.status.SetText(a.state.StatusText)
 			a.serverSummary.SetText(fmt.Sprintf("Creative: %d  |  Survival: %d  |  Active: %d", a.state.CreativeActive, a.state.SurvivalActive, a.state.ActiveCount))
-			a.accountModel.set(a.state.Accounts)
+			helpers, broadcasters := splitAccountRows(a.state.Accounts)
+			a.accountModel.set(helpers)
+			a.broadcasterModel.set(broadcasters)
 			a.playerModel.set(a.state.Players)
 			a.serverModel.set(BuildServerRows(serverStatuses))
 			a.packModel.set(BuildPackRows(storedPacks))
@@ -321,6 +335,7 @@ func (a *adminWindow) refresh() {
 				a.online.applyStatuses(onlineStatuses)
 			}
 			_ = a.accounts.SetCurrentIndex(accountRowIndex(a.accountModel.rows, selectedAccountID))
+			_ = a.broadcasters.SetCurrentIndex(accountRowIndex(a.broadcasterModel.rows, selectedAccountID))
 			_ = a.players.SetCurrentIndex(playerRowIndex(a.playerModel.rows, selectedPlayerXUID))
 			_ = a.servers.SetCurrentIndex(serverRowIndex(a.serverModel.rows, selectedServerID))
 			_ = a.packs.SetSelectedIndexes(packIndexesByUUID(a.packModel.rows, selectedPackUUIDs))
@@ -331,8 +346,8 @@ func (a *adminWindow) refresh() {
 }
 
 func (a *adminWindow) selectedStableIDs() (accountID, playerXUID, serverID string, packUUIDs []string) {
-	if i := a.accounts.CurrentIndex(); i >= 0 && i < len(a.accountModel.rows) {
-		accountID = a.accountModel.rows[i].ID
+	if row, ok := a.accountRow(); ok {
+		accountID = row.ID
 	}
 	if i := a.players.CurrentIndex(); i >= 0 && i < len(a.playerModel.rows) {
 		playerXUID = a.playerModel.rows[i].XUID
@@ -714,6 +729,12 @@ func (a *adminWindow) appendEvent(message string) {
 	}
 }
 func (a *adminWindow) accountRow() (AccountRow, bool) {
+	if a.broadcasters != nil {
+		i := a.broadcasters.CurrentIndex()
+		if i >= 0 && i < len(a.broadcasterModel.rows) {
+			return a.broadcasterModel.rows[i], true
+		}
+	}
 	i := a.accounts.CurrentIndex()
 	if i < 0 || i >= len(a.accountModel.rows) {
 		return AccountRow{}, false
@@ -728,7 +749,12 @@ func (a *adminWindow) playerRow() (PlayerRow, bool) {
 	return a.playerModel.rows[i], true
 }
 func (a *adminWindow) updateActions() {
-	ai, pi := a.accounts.CurrentIndex(), a.players.CurrentIndex()
+	row, selected := a.accountRow()
+	ai := -1
+	if selected {
+		ai = accountRowIndex(a.state.Accounts, row.ID)
+	}
+	pi := a.players.CurrentIndex()
 	hasAccount := a.state.CanEditAccount(ai)
 	hasPlayer := a.state.CanUnpair(pi)
 	a.add.SetEnabled(a.state.Connected)
@@ -737,7 +763,6 @@ func (a *adminWindow) updateActions() {
 	a.remove.SetEnabled(a.state.CanRemoveAccount(ai))
 	removeTip := "Remove the selected unpaired account from the pool."
 	if hasAccount {
-		row := a.accountModel.rows[ai]
 		if row.State == "In use" {
 			removeTip = "Disconnect this account's player before removing it."
 		} else if row.CurrentPlayer != "" {

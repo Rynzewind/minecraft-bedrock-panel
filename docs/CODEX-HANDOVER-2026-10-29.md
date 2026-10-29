@@ -1,6 +1,6 @@
 # Current verified status — 29 October 2026
 
-Both Creative and Survival were successfully joined by the user from a Switch on a separate internet connection. Both servers are currently Ready; both public HTTP discovery ports return the correct world and protocol 2225. Backend protection evidence matches with no blockers. All four installed executables match tested release release-20261029-224816. The Drive single-EXE installer matches SHA256 f2fb9c601ec4376b72864939f141908671d765f7db46cc3ad25dc437dd32d3f7. Codex remains installed. Earlier pending-test statements below are historical and superseded.
+Both Creative and Survival were successfully joined by the user from a Switch on a separate internet connection. Both servers are currently Ready; both public HTTP discovery ports return the correct world and protocol 2225. Backend protection evidence matches with no blockers. All four installed executables match tested release release-20261029-232439. The Drive single-EXE installer matches SHA256 9f3e2f45f97755b49fb85e18905c7ff11e56b20eea02ca34b833957e559b4034. Codex remains installed. Earlier pending-test statements below are historical and superseded.
 
 Durable deliverables belong in G:\My Drive\Minecraft Server Setup; source and documentation are synchronized to GitHub branch codex/online-private-access. Only the panel shortcut remains on the Desktop. Required installed/runtime/build files remain on C:. Credentials, keys, worlds and private configuration must not enter GitHub. No known blocker remains for the reported visibility/joining issue; unauthorized-access and broader LAN regression tests were not repeated in this final check.
 
@@ -103,3 +103,12 @@ The user also confirmed Creative loads the correct world from the external Switc
 
 Maintain the current handover at G:\My Drive\Minecraft Server Setup\CODEX-HANDOVER.md alongside the latest tested installer. Update both repository documentation and Drive handover after developments. Keep GitHub current by committing validated changes and pushing the working branch, codex/online-private-access. Keep installers off the Desktop; preserve the application shortcut. AGENTS.md records these standing requirements.
 
+
+
+## Account list update — 29 October 2026
+
+Accounts now has separate Helpers and Broadcasters sections. Helpers are expanded and Broadcasters collapsed whenever the panel opens. Both sections can be toggled; refresh preserves their open/closed state. The shared edit/reauthenticate/remove/role/Online access actions use the selected row's stable account ID in either section. Only helpers can be assigned to LAN players. Non-helper accounts, including explicitly unassigned accounts, are in the second section with their role visible.
+
+The top status now reports non-helper accounts and helpers separately, followed by active players. Regression checks cover role partition/counts, default expansion, selection across sections, and collapsed selection clearing. The complete build and native UI suite passed. Installer extraction, integrity, native wizard and corrupt-payload checks passed, and Defender found no threats with protection still enabled.
+
+Release: release-20261029-232439. Drive installer SHA256: 9f3e2f45f97755b49fb85e18905c7ff11e56b20eea02ca34b833957e559b4034. Updated the installed panel only; the unchanged helper, broadcaster worker and control binaries already match this release, so neither world needed a restart. Previous panel and installer are retained in Drive Archive. User visual acceptance of this UI update remains pending; both external world joins were confirmed before this UI-only update.

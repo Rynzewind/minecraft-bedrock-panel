@@ -80,8 +80,20 @@ func BuildViewState(s service.Status) ViewState {
 		}
 		state.Players = append(state.Players, row)
 	}
-	state.StatusText = "Server connected - " + itoa(len(state.Accounts)) + " accounts - " + itoa(state.ActiveCount) + " active players"
+	helpers, otherAccounts := splitAccountRows(state.Accounts)
+	state.StatusText = "Server connected - " + itoa(len(otherAccounts)) + " accounts - " + itoa(len(helpers)) + " helpers - " + itoa(state.ActiveCount) + " active players"
 	return state
+}
+
+func splitAccountRows(rows []AccountRow) (helpers, accounts []AccountRow) {
+	for _, row := range rows {
+		if accountstore.EffectiveRole(row.Role) == accountstore.RoleHelper {
+			helpers = append(helpers, row)
+		} else {
+			accounts = append(accounts, row)
+		}
+	}
+	return
 }
 
 type servicePlayer struct{ XUID, Gamertag, AccountID, LastSeen string }
