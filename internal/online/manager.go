@@ -1,5 +1,5 @@
 // Package online stores Online intent and remote access policy. It deliberately
-// cannot activate an ingress until protocol and physical-locality guarantees exist.
+// does not activate ingress; a separately supervised authenticated gateway does.
 package online
 
 import (
@@ -22,14 +22,15 @@ import (
 )
 
 const Version = 1
-const WorkerProtocol = 2193
+const WorkerProtocol = 2225
 
 type Settings struct {
-	PreferredInterface string                    `json:"preferred_interface,omitempty"`
-	Version            int                       `json:"version"`
-	PublicHost         string                    `json:"public_host"`
-	TrustedSubnets     []string                  `json:"trusted_subnets"`
-	Servers            map[string]ServerSettings `json:"servers"`
+	AllowUnknownFriendsRoute bool                      `json:"allow_unknown_friends_route,omitempty"`
+	PreferredInterface       string                    `json:"preferred_interface,omitempty"`
+	Version                  int                       `json:"version"`
+	PublicHost               string                    `json:"public_host"`
+	TrustedSubnets           []string                  `json:"trusted_subnets"`
+	Servers                  map[string]ServerSettings `json:"servers"`
 }
 type ServerSettings struct {
 	Enabled      bool   `json:"enabled"`
@@ -215,6 +216,7 @@ func (m *Manager) validate(s Settings, players []Player) error {
 	for _, v := range m.servers {
 		known[v.ID] = true
 	}
+	usedPorts := map[int]bool{}
 	for id, v := range s.Servers {
 		if !known[id] {
 			return errors.New("unknown online server")
@@ -222,7 +224,19 @@ func (m *Manager) validate(s Settings, players []Player) error {
 		if v.ExternalPort < 0 || v.ExternalPort > 65535 {
 			return errors.New("external port must be 0 (unset) or 1 through 65535")
 		}
-		if !safeText(v.AccountID, 128) || !safeText(v.WorldName, 256) {
+		if v.ExternalPort != 0 {
+			if usedPorts[v.ExternalPort] {
+				return errors.New("each Online gateway needs a separate UDP port")
+			}
+			usedPorts[v.ExternalPort] = true
+			for _, backend := range m.servers {
+				_, port, _ := net.SplitHostPort(backend.Backend)
+				if port == strconv.Itoa(v.ExternalPort) {
+					return errors.New("gateway port must be separate from backend server ports")
+				}
+			}
+		}
+		if !safeText(v.AccountID, 128) || !safeText(v.WorldName, 128) {
 			return errors.New("invalid online account or world name")
 		}
 	}
@@ -383,7 +397,7 @@ func (m *Manager) Remove(xuid string) error {
 	return nil
 }
 
-// Authorize is a policy predicate only; it cannot enable the blocked ingress.
+// Authorize is a policy predicate only; the runtime separately checks activation.
 func (m *Manager) Authorize(server, xuid string, authenticated bool) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -399,6 +413,21 @@ func (m *Manager) Authorize(server, xuid string, authenticated bool) bool {
 		}
 	}
 	return false
+}
+
+// RecordRuntime accepts only fixed runtime events, never child-supplied text.
+func (m *Manager) RecordRuntime(server, code string) {
+	messages := map[string]string{"starting": "Starting authenticated Online gateway.", "advertising": "Friends advertisement active; external joining remains unverified.", "stopped": "Online runtime stopped.", "authentication_required": "Broadcaster authentication required in Accounts.", "error": "Online worker stopped unexpectedly.", "blocked": "Online prerequisites are not satisfied."}
+	message, ok := messages[code]
+	if !ok {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.settings.Servers[server]; !ok {
+		return
+	}
+	m.record(server, "runtime", message)
 }
 func (m *Manager) UsesAccount(id string) bool {
 	m.mu.RLock()
@@ -430,7 +459,7 @@ func (m *Manager) Statuses(statuses []supervisor.Status, accounts []AccountStatu
 	out := make([]Status, 0, len(m.servers))
 	for _, server := range m.servers {
 		s := m.settings.Servers[server.ID]
-		v := Status{ServerID: server.ID, Name: server.Name, State: "Disabled", AccountID: s.AccountID, WorldName: s.WorldName, LocalTarget: server.Backend, Routing: "Blocked: physical LAN locality cannot be proven from NetherNet candidates", Message: "Online is disabled."}
+		v := Status{ServerID: server.ID, Name: server.Name, State: "Disabled", AccountID: s.AccountID, WorldName: s.WorldName, LocalTarget: server.Backend, Routing: "LAN entries stay local. Unknown-location Friends joins require explicit authenticated-gateway routing consent.", Message: "Online is disabled."}
 		if m.settings.PublicHost != "" && s.ExternalPort != 0 {
 			v.PublicTarget = net.JoinHostPort(m.settings.PublicHost, strconv.Itoa(s.ExternalPort))
 		}
@@ -470,7 +499,7 @@ func (m *Manager) Statuses(statuses []supervisor.Status, accounts []AccountStatu
 				v.Message = "Authenticate the broadcaster in Accounts."
 			default:
 				v.State = "Blocked"
-				v.Message = fmt.Sprintf("Production activation blocked: worker protocol %d; server protocol %d. Remote ACL synchronization to ingress is unverified. Authenticated per-server ingress and direct-IP bypass protection are unverified. Physical LAN locality cannot be proven; native allowlist cannot separate LAN helper XUIDs from remote access.", WorkerProtocol, server.Protocol)
+				v.Message = "Online runtime is not attached. Review connectivity diagnostics and backend protection before activation."
 			}
 		}
 		out = append(out, v)

@@ -37,6 +37,37 @@ func configuredServer() config.Server {
 	return config.Server{ID: "creative", Name: "Creative", Process: &config.Process{Executable: `C:\MinecraftServers\Creative\bedrock_server.exe`, WorkingDirectory: `C:\MinecraftServers\Creative`, WorldDirectory: `C:\MinecraftServers\Creative\worlds\Private Creative Server`, LogDirectory: `C:\MinecraftServers\Creative\logs`}}
 }
 
+func TestBeforeStopClosesOnlineBeforeBackendCommandWithoutHoldingManagerLock(t *testing.T) {
+	p := &fakeProcess{done: make(chan error, 1)}
+	var m *Manager
+	called := make(chan struct{})
+	m = New([]config.Server{configuredServer()}, fakeFactory{p: p}, Options{BeforeStop: func(id string) {
+		if m.Status(id).State != Stopping {
+			t.Error("wrong lifecycle phase")
+		}
+		p.mu.Lock()
+		if p.writes != "" {
+			t.Error("backend stop preceded Online stop")
+		}
+		p.mu.Unlock()
+		close(called)
+	}})
+	if e := m.Start(context.Background(), "creative"); e != nil {
+		t.Fatal(e)
+	}
+	done := make(chan error, 1)
+	go func() { done <- m.Stop(context.Background(), "creative") }()
+	select {
+	case <-called:
+	case <-time.After(time.Second):
+		t.Fatal("stop hook deadlocked")
+	}
+	p.done <- nil
+	if e := <-done; e != nil {
+		t.Fatal(e)
+	}
+}
+
 func TestStartAndGracefulStop(t *testing.T) {
 	p := &fakeProcess{done: make(chan error, 1)}
 	m := New([]config.Server{configuredServer()}, fakeFactory{p: p}, Options{StopTimeout: time.Second})

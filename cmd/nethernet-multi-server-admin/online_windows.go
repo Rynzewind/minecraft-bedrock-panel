@@ -41,7 +41,7 @@ func (m *onlinePlayerModel) Value(r, c int) any {
 	case 3:
 		return p.Permissions["survival"]
 	case 4:
-		return "Stored policy only — ingress blocked"
+		return "Authenticated gateway ACL"
 	}
 	return ""
 }
@@ -59,6 +59,7 @@ type onlinePage struct {
 	subnets                                 *walk.TextEdit
 	lookupAccount, serverFilter, typeFilter *walk.ComboBox
 	creative, survival                      *walk.CheckBox
+	allowUnknownFriendsRoute                *walk.CheckBox
 	message                                 *walk.TextLabel
 	diagnostics, logs                       *walk.TextEdit
 	busy                                    bool
@@ -68,21 +69,25 @@ type onlinePage struct {
 func (a *adminWindow) onlineTab() TabPage {
 	p := &onlinePage{a: a, cards: map[string]*onlineCard{}}
 	a.online = p
-	overview := []Widget{TextLabel{Text: "Preparation build: broadcasting is blocked. Protocol compatibility, protected remote ingress and reliable LAN locality have not been verified. Existing LAN discovery remains independent."}, Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Refresh Online status", OnClicked: p.load}, PushButton{Text: "Open Accounts", OnClicked: func() { a.navigation.SetCurrentIndex(2) }}}}}
+	overview := []Widget{TextLabel{Text: "Online starts only when server readiness, account health and effective backend firewall protection pass. Existing LAN entries stay local. Remote joining requires external verification."}, Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Refresh Online status", OnClicked: p.load}, PushButton{Text: "Open Accounts", OnClicked: func() { a.navigation.SetCurrentIndex(2) }}}}}
 	for _, id := range []string{"creative", "survival"} {
 		c := &onlineCard{}
 		p.cards[id] = c
-		overview = append(overview, GroupBox{Title: strings.Title(id), Layout: VBox{}, Children: []Widget{TextLabel{AssignTo: &c.status, Text: "Disabled — load status to inspect configuration."}, CheckBox{AssignTo: &c.enabled, Text: "Enable Online Access (requested; activation remains blocked)"}, Label{Text: "Broadcaster account (authenticate through Accounts):"}, ComboBox{AssignTo: &c.account, Model: []string{"None — add a broadcaster account in Accounts"}, CurrentIndex: 0}, Label{Text: "Advertised world name:"}, LineEdit{AssignTo: &c.world}}})
+		overview = append(overview, GroupBox{Title: strings.Title(id), Layout: VBox{}, Children: []Widget{TextLabel{AssignTo: &c.status, Text: "Disabled — load status to inspect configuration."}, CheckBox{AssignTo: &c.enabled, Text: "Enable Online Access"}, Label{Text: "Broadcaster account (authenticate through Accounts):"}, ComboBox{AssignTo: &c.account, Model: []string{"None — add a broadcaster account in Accounts"}, CurrentIndex: 0}, Label{Text: "Advertised world name:"}, LineEdit{AssignTo: &c.world}}})
 	}
 	overview = append(overview, PushButton{Text: "Save Online settings", OnClicked: p.save}, VSpacer{})
-	authorised := TabPage{Title: "Authorised Players", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Only an authenticated Xbox profile lookup can create a new managed identity. Friendship never grants access. These policies are stored, but no remote ingress is active or verified in this build."}, TableView{AssignTo: &p.players, Model: &p.playerModel, MinSize: Size{Height: 150}, StretchFactor: 1, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Gamertag", Width: 180}, {Title: "Stable XUID", Width: 180}, {Title: "Creative", Width: 85}, {Title: "Survival", Width: 85}, {Title: "Enforcement", Width: 300}}}, Label{Text: "Gamertag to resolve:"}, LineEdit{AssignTo: &p.gamertag}, ComboBox{AssignTo: &p.lookupAccount, Model: []string{"Select an authenticated broadcaster account"}, CurrentIndex: 0}, Composite{Layout: HBox{}, Children: []Widget{CheckBox{AssignTo: &p.creative, Text: "Creative"}, CheckBox{AssignTo: &p.survival, Text: "Survival"}, HSpacer{}}}, Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Resolve and review new player...", OnClicked: p.resolve}, PushButton{Text: "Update selected permissions", OnClicked: p.updatePlayer}, PushButton{Text: "Revoke selected access", OnClicked: p.revoke}, PushButton{Text: "Remove managed record", OnClicked: p.removePlayer}}}}}
-	bar:=authorised.Children[len(authorised.Children)-1].(Composite);bar.Layout=VBox{MarginsZero:true};bar.Children=[]Widget{Composite{Layout:HBox{MarginsZero:true},Children:bar.Children[:2]},Composite{Layout:HBox{MarginsZero:true},Children:bar.Children[2:]}};authorised.Children[len(authorised.Children)-1]=bar
-	connectivity := []Widget{TextLabel{Text: "Local connections: existing LAN route preferred. External connections: no active listener. Friends-entry locality is Unknown; private candidates and NAT addresses are not accepted as proof. No hairpin or relay fallback is enabled."}, Label{Text: "Public IPv4 or hostname (metadata only):"}, LineEdit{AssignTo: &p.publicHost}, Label{Text: "Preferred LAN adapter/interface (preference only; existing LAN configuration is unchanged):"}, LineEdit{AssignTo: &p.preferred}, Label{Text: "Explicit trusted local subnets (one per line; not proof of a joining client's location):"}, TextEdit{AssignTo: &p.subnets, MinSize: Size{Height: 60}, MaxSize: Size{Height: 100}}}
+	authorised := TabPage{Title: "Authorised Players", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Only an authenticated Xbox profile lookup can create a new managed identity. Friendship never grants access. The authenticated gateway enforces these permissions; external joining remains unverified until tested."}, TableView{AssignTo: &p.players, Model: &p.playerModel, MinSize: Size{Height: 150}, StretchFactor: 1, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Gamertag", Width: 180}, {Title: "Stable XUID", Width: 180}, {Title: "Creative", Width: 85}, {Title: "Survival", Width: 85}, {Title: "Enforcement", Width: 300}}}, Label{Text: "Gamertag to resolve:"}, LineEdit{AssignTo: &p.gamertag}, ComboBox{AssignTo: &p.lookupAccount, Model: []string{"Select an authenticated broadcaster account"}, CurrentIndex: 0}, Composite{Layout: HBox{}, Children: []Widget{CheckBox{AssignTo: &p.creative, Text: "Creative"}, CheckBox{AssignTo: &p.survival, Text: "Survival"}, HSpacer{}}}, Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Resolve and review new player...", OnClicked: p.resolve}, PushButton{Text: "Update selected permissions", OnClicked: p.updatePlayer}, PushButton{Text: "Revoke selected access", OnClicked: p.revoke}, PushButton{Text: "Remove managed record", OnClicked: p.removePlayer}}}}}
+	bar := authorised.Children[len(authorised.Children)-1].(Composite)
+	bar.Layout = VBox{MarginsZero: true}
+	bar.Children = []Widget{Composite{Layout: HBox{MarginsZero: true}, Children: bar.Children[:2]}, Composite{Layout: HBox{MarginsZero: true}, Children: bar.Children[2:]}}
+	authorised.Children[len(authorised.Children)-1] = bar
+	connectivity := []Widget{TextLabel{Text: "Existing LAN entries stay local. Friends connections with unknown location use the authenticated gateway only with explicit consent below. A local device choosing Friends may use the Internet/hairpin route."}, Label{Text: "Public IPv4 or hostname for the authenticated gateway:"}, LineEdit{AssignTo: &p.publicHost}, Label{Text: "Preferred LAN adapter/interface (preference only; existing LAN configuration is unchanged):"}, LineEdit{AssignTo: &p.preferred}, Label{Text: "Explicit trusted local subnets (one per line; not proof of a joining client's location):"}, TextEdit{AssignTo: &p.subnets, MinSize: Size{Height: 60}, MaxSize: Size{Height: 100}}}
+	connectivity = append(connectivity, CheckBox{AssignTo: &p.allowUnknownFriendsRoute, Text: "Allow unknown-location Friends joins through the authenticated gateway (local Friends may use Internet routing)"})
 	for _, id := range []string{"creative", "survival"} {
-		connectivity = append(connectivity, Label{Text: strings.Title(id) + " external UDP port (0 = unset; not opened):"}, NumberEdit{AssignTo: &p.cards[id].port, MinValue: 0, MaxValue: 65535, Decimals: 0})
+		connectivity = append(connectivity, Label{Text: strings.Title(id) + " gateway UDP port (0 = unset; firewall and router changes require a separate review):"}, NumberEdit{AssignTo: &p.cards[id].port, MinValue: 0, MaxValue: 65535, Decimals: 0})
 	}
 	connectivity = append(connectivity, Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Save connectivity settings", OnClicked: p.save}, PushButton{Text: "Inspect local networking", OnClicked: p.inspect}}}, TextEdit{AssignTo: &p.diagnostics, ReadOnly: true, MinSize: Size{Height: 150}, Text: "Router forwarding must not point at an unprotected BDS backend. This build does not open firewall ports, configure a router or verify external reachability. Secure ingress and protocol compatibility are required before forwarding can be planned."})
-	logs := TabPage{Title: "Logs", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Configuration and policy events only. No connection, transfer or routing success is invented. No authentication secrets are logged."}, Composite{Layout: HBox{}, Children: []Widget{ComboBox{AssignTo: &p.serverFilter, Model: []string{"All servers", "creative", "survival"}, CurrentIndex: 0}, ComboBox{AssignTo: &p.typeFilter, Model: []string{"All event types", "settings", "authorization"}, CurrentIndex: 0}, PushButton{Text: "Refresh logs", OnClicked: p.loadLogs}}}, TextEdit{AssignTo: &p.logs, ReadOnly: true, MinSize: Size{Height: 180}, StretchFactor: 1}}}
+	logs := TabPage{Title: "Logs", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Configuration and policy events only. No connection, transfer or routing success is invented. No authentication secrets are logged."}, Composite{Layout: HBox{}, Children: []Widget{ComboBox{AssignTo: &p.serverFilter, Model: []string{"All servers", "creative", "survival"}, CurrentIndex: 0}, ComboBox{AssignTo: &p.typeFilter, Model: []string{"All event types", "settings", "authorization", "runtime"}, CurrentIndex: 0}, PushButton{Text: "Refresh logs", OnClicked: p.loadLogs}}}, TextEdit{AssignTo: &p.logs, ReadOnly: true, MinSize: Size{Height: 180}, StretchFactor: 1}}}
 	return TabPage{Title: "Online", Layout: VBox{}, Children: []Widget{TextLabel{AssignTo: &p.message, Text: "Online defaults to disabled. Servers remains the only Minecraft lifecycle controller."}, TabWidget{AssignTo: &p.tabs, StretchFactor: 1, Pages: []TabPage{scrollableAdminPage(TabPage{Title: "Overview", Layout: VBox{}, Children: overview}), scrollableAdminPage(authorised), scrollableAdminPage(TabPage{Title: "Connectivity", Layout: VBox{}, Children: connectivity}), scrollableAdminPage(logs)}}}}
 }
 func (p *onlinePage) call(method string, params, out any, done func()) {
@@ -101,7 +106,7 @@ func (p *onlinePage) call(method string, params, out any, done func()) {
 				p.message.SetText(e.Error())
 				return
 			}
-			p.message.SetText("Saved/checked. Remote activation remains blocked in this preparation build.")
+			p.message.SetText("Saved/checked. Review the runtime status and connectivity diagnostics.")
 			if done != nil {
 				done()
 			}
@@ -163,13 +168,14 @@ func (p *onlinePage) load() {
 			p.lookupAccount.SetModel(names)
 			p.lookupAccount.SetCurrentIndex(0)
 			p.publicHost.SetText(settings.PublicHost)
+			p.allowUnknownFriendsRoute.SetChecked(settings.AllowUnknownFriendsRoute)
 			p.preferred.SetText(settings.PreferredInterface)
 			p.subnets.SetText(strings.Join(settings.TrustedSubnets, "\r\n"))
 			p.playerModel.rows = players
 			p.playerModel.PublishRowsReset()
 			p.applyStatuses(statuses)
 			p.loaded = true
-			p.message.SetText("Configuration loaded. Broadcasting, remote entry and LAN-first Friends routing are not verified or active.")
+			p.message.SetText("Configuration loaded. Review runtime status; external joining is unverified until tested.")
 		})
 	}()
 }
@@ -188,6 +194,7 @@ func (p *onlinePage) save() {
 	settings := p.settings
 	settings.Servers = map[string]online.ServerSettings{}
 	settings.PublicHost = p.publicHost.Text()
+	settings.AllowUnknownFriendsRoute = p.allowUnknownFriendsRoute.Checked()
 	settings.PreferredInterface = p.preferred.Text()
 	settings.TrustedSubnets = strings.Fields(p.subnets.Text())
 	for id, c := range p.cards {
@@ -226,7 +233,7 @@ func (p *onlinePage) resolve() {
 		Player       online.Player `json:"player"`
 	}
 	p.call("online.players.resolve", map[string]string{"gamertag": p.gamertag.Text(), "account_id": p.choices[i-1].ID}, &result, func() {
-		if walk.MsgBox(p.a.mw, "Review resolved remote identity", fmt.Sprintf("Store access policy for %s\nAuthenticated Xbox profile XUID: %s\nServers: %s\n\nNo remote ingress is active in this build.", result.Player.Gamertag, result.Player.XUID, strings.Join(servers, ", ")), walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
+		if walk.MsgBox(p.a.mw, "Review resolved remote identity", fmt.Sprintf("Store access policy for %s\nAuthenticated Xbox profile XUID: %s\nServers: %s\n\nAccess applies only to authenticated gateway joins.", result.Player.Gamertag, result.Player.XUID, strings.Join(servers, ", ")), walk.MsgBoxYesNo|walk.MsgBoxIconQuestion) != walk.DlgCmdYes {
 			return
 		}
 		p.call("online.players.grant", map[string]any{"resolution_id": result.ResolutionID, "servers": servers}, nil, p.load)
@@ -285,4 +292,3 @@ func (p *onlinePage) loadLogs() {
 		p.logs.SetText(b.String())
 	})
 }
-

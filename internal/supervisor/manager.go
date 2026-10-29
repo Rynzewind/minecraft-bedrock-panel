@@ -233,6 +233,9 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 	s.status.State = Stopping
 	s.status.Phase = "stopping"
 	m.mu.Unlock()
+	if m.opts.BeforeStop != nil {
+		m.opts.BeforeStop(id)
+	}
 	if _, err := p.Write([]byte("stop\r\n")); err != nil {
 		return err
 	}

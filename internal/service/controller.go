@@ -35,6 +35,10 @@ type pendingEnrollment struct {
 	accountID  string
 }
 type Controller struct {
+	onlineAuthenticationReset     func(string)
+	onlineRuntimeStatus           func([]online.Status) []online.Status
+	onlineRuntimeChanged          func()
+	onlineRuntimeDiagnostics      func() any
 	online                        *online.Manager
 	onlineLoadError               error
 	onlineResolutions             map[string]resolvedOnlinePlayer
@@ -438,6 +442,7 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		if err = c.manager.Reload(); err != nil {
 			return nil, err
 		}
+		c.onlineReauthenticated(a)
 		a.EncryptedToken = ""
 		return a, nil
 	case "account.reauthenticate":

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestOnlineIsSeparateAndDefaultsToBlockedPreparation(t *testing.T) {
+func TestOnlineIsSeparateAndDefaultsDisabledWithoutRoutingConsent(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	a := &adminWindow{startHidden: true}
@@ -20,6 +20,9 @@ func TestOnlineIsSeparateAndDefaultsToBlockedPreparation(t *testing.T) {
 	}
 	if a.online == nil || a.online.tabs.Pages().Len() != 4 {
 		t.Fatal("Online subtabs missing")
+	}
+	if a.online.allowUnknownFriendsRoute == nil || a.online.allowUnknownFriendsRoute.Checked() {
+		t.Fatal("explicit routing consent control missing or preselected")
 	}
 	for _, c := range a.online.cards {
 		if c.enabled.Checked() {

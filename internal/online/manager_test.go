@@ -186,6 +186,31 @@ func TestInvalidPorts(t *testing.T) {
 		}
 	}
 }
+
+func TestFriendsRoutingConsentPersistsButDefaultsOff(t *testing.T) {
+	m, p := fixture(t)
+	s := m.Settings()
+	if s.AllowUnknownFriendsRoute {
+		t.Fatal("consent defaulted on")
+	}
+	s.AllowUnknownFriendsRoute = true
+	if err := m.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	n, err := New(p, m.servers)
+	if err != nil || !n.Settings().AllowUnknownFriendsRoute {
+		t.Fatal("explicit choice not saved", err)
+	}
+	v := s.Servers["creative"]
+	v.ExternalPort = 19140
+	s.Servers["creative"] = v
+	v = s.Servers["survival"]
+	v.ExternalPort = 19140
+	s.Servers["survival"] = v
+	if m.Save(s) == nil {
+		t.Fatal("duplicate gateway ports accepted")
+	}
+}
 func TestPreferredInterfaceMetadata(t *testing.T) {
 	m, _ := fixture(t)
 	s := m.Settings()

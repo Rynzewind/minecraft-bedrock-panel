@@ -7,6 +7,25 @@ import (
 	"testing"
 )
 
+func TestBroadcasterAuthenticationFailureDoesNotAffectHelpers(t *testing.T) {
+	m := testManager(t, 1)
+	if err := m.RequireBroadcasterAuthentication("a"); err == nil {
+		t.Fatal("helper health may not be changed by Online")
+	}
+	if !m.Snapshot().Accounts[0].Healthy {
+		t.Fatal("helper affected")
+	}
+	if err := m.SetRole("a", accountstore.RoleBroadcaster); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.RequireBroadcasterAuthentication("a"); err != nil {
+		t.Fatal(err)
+	}
+	if m.Snapshot().Accounts[0].Healthy {
+		t.Fatal("failed broadcaster still healthy")
+	}
+}
+
 func TestRolesIsolateBroadcasterFromHelperPool(t *testing.T) {
 	m := testManager(t, 1)
 	if err := m.SetRole("a", accountstore.RoleBroadcaster); err != nil {

@@ -1,9 +1,10 @@
-// NetherNetOnline is an offline compatibility and admission proof of concept.
-// It deliberately contains no session startup or token persistence path.
+// NetherNetOnline runs an isolated authenticated Friends broadcaster through a
+// private parent broker. OAuth access tokens are transient and never persisted.
 package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -17,6 +18,7 @@ import (
 )
 
 const upstreamCommit = "bb06c2ddc46fb61b2bbbb886f08d6edf11383a3e"
+const forkCommit = "f8448d729edd8abed1b04f37566b54da27b50249"
 const maxEnvelope = 16 * 1024
 
 type capability struct {
@@ -28,6 +30,8 @@ type capability struct {
 	PerClientRoute         bool   `json:"per_client_route"`
 	RemoteIngressVerified  bool   `json:"remote_ingress_verified"`
 	LANFirstVerified       bool   `json:"lan_first_verified"`
+	BrokeredTokens         bool   `json:"brokered_tokens"`
+	ForkCommit             string `json:"fork_commit"`
 }
 
 type envelope struct {
@@ -71,7 +75,7 @@ func run(args []string, in io.Reader, out io.Writer) int {
 	case "--probe":
 		// Reference actual compiled upstream configuration and protocol constants.
 		c := upstreamConfig()
-		emit(out, capability{protocol.CurrentProtocol, protocol.CurrentVersion, upstreamCommit, c.Relay == nil, !c.ListenConfig.AuthenticationDisabled && c.ListenConfig.Allow != nil, false, false, false})
+		emit(out, capability{protocol.CurrentProtocol, protocol.CurrentVersion, upstreamCommit, c.Relay == nil, !c.ListenConfig.AuthenticationDisabled && c.ListenConfig.Allow != nil, false, false, false, true, forkCommit})
 		return 0
 	case "--validate":
 		b, err := io.ReadAll(io.LimitReader(in, maxEnvelope+1))
@@ -108,7 +112,7 @@ func run(args []string, in io.Reader, out io.Writer) int {
 		// Caller claims can never upgrade compiled capability or authorize ingress.
 		return deny(out, "locality_and_protected_ingress_unverified")
 	case "--run":
-		return deny(out, "activation_blocked_protocol_locality_and_ingress_unverified")
+		return runWorker(context.Background(), in, out, actualFactory)
 	default:
 		return deny(out, "invalid_arguments")
 	}

@@ -8,6 +8,28 @@ import (
 	"nethernet-multi-server/internal/accountstore"
 )
 
+// RequireBroadcasterAuthentication holds only a dedicated Online identity.
+// Reauthentication through Accounts restores its health; LAN helpers are excluded.
+func (m *Manager) RequireBroadcasterAuthentication(id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, a := range m.snapshot.Accounts {
+		if a.ID != id {
+			continue
+		}
+		if accountstore.EffectiveRole(a.Role) != accountstore.RoleBroadcaster {
+			return errors.New("account is not a broadcaster")
+		}
+		m.snapshot.Accounts[i].Healthy = false
+		if err := m.store.Save(m.snapshot); err != nil {
+			m.snapshot.Accounts[i].Healthy = a.Healthy
+			return err
+		}
+		return nil
+	}
+	return errors.New("broadcaster account not found")
+}
+
 // SetRole cannot change an identity already used for a player's world data.
 func (m *Manager) SetRole(id, role string) error {
 	if err := accountstore.ValidateRole(role); err != nil {

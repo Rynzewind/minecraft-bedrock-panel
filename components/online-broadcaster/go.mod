@@ -5,6 +5,7 @@ go 1.26.2
 require (
 	github.com/HashimTheArab/go-mcxboxbroadcast v0.0.0-20261012121023-bb06c2ddc46f
 	github.com/sandertv/gophertunnel v0.0.0-00010101000000-000000000000
+	golang.org/x/oauth2 v0.36.0
 )
 
 require (
@@ -14,7 +15,7 @@ require (
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
 	github.com/creachadair/jrpc2 v1.3.5 // indirect
 	github.com/creachadair/mds v0.26.1 // indirect
-	github.com/df-mc/go-nethernet v1.0.25-0.20260928201420-215e46422b58 // indirect
+	github.com/df-mc/go-nethernet v1.0.26 // indirect
 	github.com/df-mc/go-playfab/v2 v2.0.4-0.20261011110813-e01ef1ec605c // indirect
 	github.com/df-mc/go-xsapi/v2 v2.0.4-0.20261012072832-90ce120e31cd // indirect
 	github.com/df-mc/jsonc v1.0.5 // indirect
@@ -44,7 +45,6 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
@@ -54,4 +54,4 @@ require (
 
 replace github.com/sandertv/go-raknet => github.com/hashimthearab/go-raknet v1.15.1-0.20260908193618-2049463566ca
 
-replace github.com/sandertv/gophertunnel => github.com/hashimthearab/gophertunnel v1.25.3-0.20261012092146-f12973c6db70
+replace github.com/sandertv/gophertunnel => github.com/hashimthearab/gophertunnel v1.25.3-0.20261028172540-f8448d729edd

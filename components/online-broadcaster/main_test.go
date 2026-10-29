@@ -18,7 +18,7 @@ func TestProbeUsesCompiledCapabilities(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &p); err != nil {
 		t.Fatal(err)
 	}
-	if p.Protocol != 2193 || p.GameVersion != "1.26.50" || !p.DirectTransfer || !p.AuthenticatedAdmission || p.PerClientRoute || p.RemoteIngressVerified || p.LANFirstVerified {
+	if p.Protocol != 2225 || p.GameVersion != "1.26.60" || !p.DirectTransfer || !p.AuthenticatedAdmission || !p.BrokeredTokens || p.PerClientRoute || p.RemoteIngressVerified || p.LANFirstVerified {
 		t.Fatal(out.String())
 	}
 	c := upstreamConfig()

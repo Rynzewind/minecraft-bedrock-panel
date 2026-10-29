@@ -11,6 +11,46 @@ import (
 	"testing"
 )
 
+func TestOnlineRuntimeRefreshesAfterRevokeAndSuppliesActualStatus(t *testing.T) {
+	m, e := online.New(filepath.Join(t.TempDir(), "online.json"), []config.Server{{ID: "creative", Backend: "192.0.2.1:19132"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	c := &Controller{}
+	c.SetOnline(m, nil)
+	changed := 0
+	c.SetOnlineRuntime(func(s []online.Status) []online.Status { s[0].Message = "Runtime attached"; return s }, func() { changed++ }, func() any { return "effective evidence" })
+	if _, e = c.Handle(context.Background(), "online.players.revoke", json.RawMessage(`{"xuid":"123","server":"creative"}`)); e != nil {
+		t.Fatal(e)
+	}
+	if changed != 1 {
+		t.Fatal("revocation not reconciled immediately")
+	}
+	v, e := c.Handle(context.Background(), "online.status", nil)
+	if e != nil || v.([]online.Status)[0].Message != "Runtime attached" {
+		t.Fatal("runtime status omitted", e)
+	}
+	v, e = c.Handle(context.Background(), "online.diagnostics", nil)
+	if e != nil || v != "effective evidence" {
+		t.Fatal("runtime diagnostics omitted", e)
+	}
+}
+
+func TestSuccessfulBroadcasterReauthenticationExplicitlyClearsRuntimeHold(t *testing.T) {
+	c := &Controller{}
+	resetID := ""
+	changed := 0
+	c.SetOnlineRuntime(nil, func() { changed++ }, nil, func(id string) { resetID = id })
+	c.onlineReauthenticated(accountstore.Account{ID: "helper", Role: accountstore.RoleHelper})
+	if changed != 0 {
+		t.Fatal("LAN helper reset Online hold")
+	}
+	c.onlineReauthenticated(accountstore.Account{ID: "dedicated", Role: accountstore.RoleBroadcaster})
+	if resetID != "dedicated" || changed != 1 {
+		t.Fatal("reauthentication hold not cleared")
+	}
+}
+
 func TestOnlineNeverAuthorizesArbitraryClientXUID(t *testing.T) {
 	m, e := online.New(filepath.Join(t.TempDir(), "online.json"), []config.Server{{ID: "creative", Name: "Creative", Protocol: 2225, Backend: "192.0.2.1:19132"}})
 	if e != nil {

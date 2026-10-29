@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -87,7 +88,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "Error: open player session history: %v\n", err)
 		return 1
 	}
-	serverManager := supervisor.New(cfg.Servers, supervisor.WindowsFactory{}, supervisor.Options{ApplyPending: func(_ context.Context, id string) error {
+	var onlineRuntime atomic.Pointer[onlineRuntimeHost]
+	serverManager := supervisor.New(cfg.Servers, supervisor.WindowsFactory{}, supervisor.Options{BeforeStop: func(id string) {
+		if host := onlineRuntime.Load(); host != nil {
+			host.backendStopping(id)
+		}
+	}, ApplyPending: func(_ context.Context, id string) error {
 		if err := packManager.Apply(id); err != nil {
 			return err
 		}
@@ -208,6 +214,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		}()
 	}
 	proxyservice.ServeTargets(ctx, targets, backend.NetherNetDialer{Log: logger}, accountManager, historyStore, logger)
+	if onlineManager != nil && onlineError == nil {
+		executable, executableError := os.Executable()
+		if executableError == nil {
+			host := startOnlineRuntime(ctx, cfg, accountManager, onlineManager, serverManager, historyStore, logger, filepath.Join(filepath.Dir(executable), "NetherNetOnline.exe"))
+			onlineRuntime.Store(host)
+			controller.SetOnlineRuntime(host.status, host.changed, host.diagnostics, host.coordinator.ResetAuthentication)
+			defer host.close()
+		}
+	}
 
 	fmt.Fprintln(stdout, "NetherNet Multi-Server")
 	fmt.Fprintln(stdout, "Stage 2 connection proxy")

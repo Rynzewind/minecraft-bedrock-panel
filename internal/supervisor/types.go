@@ -47,6 +47,7 @@ type ProcessFactory interface {
 	Start(context.Context, config.Process, io.Writer) (Process, error)
 }
 type Options struct {
+	BeforeStop   func(string)
 	StopTimeout  time.Duration
 	ApplyPending func(context.Context, string) error
 	MaxLogBytes  int

@@ -20,6 +20,34 @@ type resolvedOnlinePlayer struct {
 	Expires   time.Time
 }
 
+// SetOnlineRuntime attaches optional resources only after normal LAN startup.
+// A missing runtime cannot prevent local administration or LAN operation.
+func (c *Controller) SetOnlineRuntime(status func([]online.Status) []online.Status, changed func(), diagnostics func() any, reset ...func(string)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onlineRuntimeStatus = status
+	c.onlineRuntimeChanged = changed
+	c.onlineRuntimeDiagnostics = diagnostics
+	if len(reset) > 0 {
+		c.onlineAuthenticationReset = reset[0]
+	}
+}
+
+func (c *Controller) onlineReauthenticated(a accountstore.Account) {
+	if accountstore.EffectiveRole(a.Role) != accountstore.RoleBroadcaster {
+		return
+	}
+	c.mu.Lock()
+	reset, changed := c.onlineAuthenticationReset, c.onlineRuntimeChanged
+	c.mu.Unlock()
+	if reset != nil {
+		reset(a.ID)
+	}
+	if changed != nil {
+		changed()
+	}
+}
+
 func (c *Controller) SetOnline(m *online.Manager, loadError error) {
 	c.online = m
 	c.onlineLoadError = loadError
@@ -37,6 +65,15 @@ func (c *Controller) onlineAccounts() []online.AccountStatus {
 func (c *Controller) handleOnline(ctx context.Context, method string, raw json.RawMessage) (any, error) {
 	if c.online == nil {
 		return nil, fmt.Errorf("Online configuration is unavailable; LAN operation is independent. Repair the saved Online settings before continuing")
+	}
+	c.mu.Lock()
+	runtimeStatus, runtimeChanged, runtimeDiagnostics := c.onlineRuntimeStatus, c.onlineRuntimeChanged, c.onlineRuntimeDiagnostics
+	c.mu.Unlock()
+	switch method {
+	case "online.settings.save", "online.players.grant", "online.players.update", "online.players.revoke", "online.players.remove":
+		if runtimeChanged != nil {
+			defer runtimeChanged()
+		}
 	}
 	var p struct {
 		Settings     online.Settings `json:"settings"`
@@ -81,7 +118,11 @@ func (c *Controller) handleOnline(ctx context.Context, method string, raw json.R
 		if c.supervisor != nil {
 			statuses = c.supervisor.Statuses()
 		}
-		return c.online.Statuses(statuses, c.onlineAccounts()), nil
+		result := c.online.Statuses(statuses, c.onlineAccounts())
+		if runtimeStatus != nil {
+			result = runtimeStatus(result)
+		}
+		return result, nil
 	case "online.players.list":
 		return c.online.Players(), nil
 	case "online.players.resolve":
@@ -149,6 +190,9 @@ func (c *Controller) handleOnline(ctx context.Context, method string, raw json.R
 	case "online.logs":
 		return c.online.Events(p.Server, p.Type), nil
 	case "online.diagnostics":
+		if runtimeDiagnostics != nil {
+			return runtimeDiagnostics(), nil
+		}
 		interfaces, e := net.Interfaces()
 		if e != nil {
 			return nil, fmt.Errorf("cannot inspect local adapters")
