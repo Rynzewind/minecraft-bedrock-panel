@@ -12,7 +12,7 @@ On 29 October 2026 the user accepted unknown-location Friends connections throug
 - Dedicated broadcaster roles and Accounts-only device sign-in, existing DPAPI refresh-token ownership, role-safe older-version migration. Existing helpers retain their mappings and inventories.
 - Authenticated Xbox profile resolution, single-use identity review and explicit Creative/Survival XUID permissions. Friendship alone grants nothing.
 - Isolated protocol-2225 broadcaster, private inherited-pipe access-token/admission broker, authentication enabled, relay disabled, no device-flow fallback or second token cache.
-- Authenticated RakNet gateway that checks verified console XUID before private resource packs, helper leasing and backend dialing. Existing session code preserves the player's assigned helper identity and world data.
+- Authenticated NetherNet HTTP/WebRTC gateway that checks verified console XUID before private resource packs, helper leasing and backend dialing. Existing session code preserves the player's assigned helper identity and world data.
 - Live ACL rechecks around helper/backend operations and an independent active-session watchdog. Disablement/revocation, readiness loss, child exit and shutdown close owned remote sessions.
 - Parent supervision with bounded retries, explicit Accounts reauthentication recovery, Windows suspended creation and kill-on-close job containment. Replacement is blocked until an old worker's exit is confirmed.
 - Effective Windows Firewall evidence evaluation for per-BDS host-source restriction across IPv4 and IPv6. Admission rechecks current host addresses and evidence freshness independently of account-lock stalls. No firewall apply operation is included.
@@ -24,7 +24,7 @@ The isolated component pins MIT go-mcxboxbroadcast bb06c2ddc46fb61b2bbbb886f08d6
 
 ## Activation requirements and outstanding verification
 
-Online defaults disabled and requires explicit routing consent, a healthy dedicated broadcaster, public gateway host and distinct UDP ports, ready BDS with online-mode=true, the pinned worker, and fresh matching backend protection evidence. Missing or denied firewall inspection blocks Online while LAN stays independent. On this PC, read-only ActiveStore inspection returned Access denied under the unelevated user; no effective protection is claimed.
+Online defaults disabled and requires explicit routing consent, a healthy dedicated broadcaster, public gateway host and distinct TCP/UDP ports, ready BDS with online-mode=true, the pinned worker, and fresh matching backend protection evidence. Missing or denied firewall inspection blocks Online while LAN stays independent. On this PC, read-only ActiveStore inspection returned Access denied under the unelevated user; no effective protection is claimed.
 
 Before any live change: review the generated backend protection plan and rollback inventory, establish an approved least-privilege way to inspect effective policy, and test the proposed BDS host-only restrictions against the existing helper path. Do not expose the existing BDS endpoints. Gateway forwarding, NAT/hairpin/CGNAT, Xbox profile entitlement, Friends publication, console resource packs, authorized remote joining and unauthorized/direct-backend refusal require controlled physical tests. A matching policy snapshot is not proof those tests passed. Local Windows processes/administrators remain trusted; address churn requires stopping access and reconciling policy.
 

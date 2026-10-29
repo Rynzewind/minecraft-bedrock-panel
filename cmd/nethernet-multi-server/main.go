@@ -217,7 +217,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if onlineManager != nil && onlineError == nil {
 		executable, executableError := os.Executable()
 		if executableError == nil {
-			host := startOnlineRuntime(ctx, cfg, accountManager, onlineManager, serverManager, historyStore, logger, filepath.Join(filepath.Dir(executable), "NetherNetOnline.exe"))
+			host := startOnlineRuntime(ctx, cfg, accountManager, onlineManager, serverManager, historyStore, logger, filepath.Join(filepath.Dir(executable), "NetherNetOnline.exe"), config.IdentityDirectory(configPath))
 			onlineRuntime.Store(host)
 			controller.SetOnlineRuntime(host.status, host.changed, host.diagnostics, host.coordinator.ResetAuthentication)
 			defer host.close()

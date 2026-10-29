@@ -2,10 +2,12 @@ package proxy
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"sync"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
+	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"github.com/sandertv/gophertunnel/minecraft/resource"
 	"golang.org/x/oauth2"
 	"nethernet-multi-server/internal/accounts"
@@ -23,12 +26,15 @@ import (
 // RemoteGatewayOptions deliberately contains no server lifecycle or LAN control.
 // Authorize must be concurrency-safe and query the current explicit XUID ACL.
 type RemoteGatewayOptions struct {
-	Server    config.Server
-	Leaser    AccountLeaser
-	Dialer    backend.Dialer
-	Recorder  SessionRecorder
-	Authorize func(string) bool
-	Log       *slog.Logger
+	OperatorKey *ecdsa.PrivateKey
+	PublicIPv4  netip.Addr
+	InterfaceIP net.IP
+	Server      config.Server
+	Leaser      AccountLeaser
+	Dialer      backend.Dialer
+	Recorder    SessionRecorder
+	Authorize   func(string) bool
+	Log         *slog.Logger
 }
 
 type remoteGatewayConnection interface {
@@ -102,6 +108,8 @@ func StartRemoteGateway(ctx context.Context, bindAddress string, opts RemoteGate
 		logger = slog.Default()
 	}
 	listenConfig := remoteGatewayListenConfig(logger, opts.Authorize)
+	listenConfig.ErrorLog = safeGatewayProtocolLog(logger)
+	listenConfig.StatusProvider = remoteGatewayStatus{server: opts.Server}
 	listenConfig.TexturePacksRequired = texturePacksRequired(opts.Server)
 	listenConfig.FetchResourcePacks = func(_ login.IdentityData, _ login.ClientData, current []*resource.Pack) []*resource.Pack {
 		packs, err := activeResourcePacks(opts.Server)
@@ -111,18 +119,41 @@ func StartRemoteGateway(ctx context.Context, bindAddress string, opts RemoteGate
 		}
 		return packs
 	}
-	listener, err := listenConfig.Listen("raknet", bindAddress)
+	listener, err := listenRemoteGatewayNetherNet(ctx, bindAddress, opts, listenConfig)
 	if err != nil {
 		return nil, fmt.Errorf("start authenticated remote gateway: %w", err)
 	}
-	target := Target{Name: opts.Server.Name, BackendURL: opts.Server.BackendURL(), Listener: listener}
+	target := Target{Name: opts.Server.Name, BackendURL: opts.Server.BackendURL(), Listener: listener.authenticatedGatewayListener.Listener}
 	run := func(sessionCtx context.Context, raw remoteGatewayConnection) {
 		inbound := raw.(*minecraft.Conn)
 		xuid := inbound.IdentityData().XUID
 		gate := func() bool { return sessionCtx.Err() == nil && xuid != "" && opts.Authorize(xuid) }
 		serveSession(sessionCtx, target, inbound, remoteGatewayDialer{base: opts.Dialer, allowed: gate}, remoteGatewayLeaser{base: opts.Leaser, allowed: gate}, opts.Recorder, logger)
 	}
-	return newRemoteGateway(ctx, authenticatedGatewayListener{listener}, opts.Authorize, run, logger), nil
+	return newRemoteGateway(ctx, listener, opts.Authorize, run, logger), nil
+}
+
+type remoteGatewayStatus struct{ server config.Server }
+
+func (p remoteGatewayStatus) ServerStatus(players, maxPlayers int) minecraft.ServerStatus {
+	mode := packet.GameTypeSurvival
+	switch strings.ToLower(p.server.GameType) {
+	case "creative":
+		mode = packet.GameTypeCreative
+	case "adventure":
+		mode = packet.GameTypeAdventure
+	}
+	if p.server.MaxPlayerCount > 0 {
+		maxPlayers = int(p.server.MaxPlayerCount)
+	}
+	if maxPlayers == 0 {
+		maxPlayers = players + 1
+	}
+	level := p.server.LevelName
+	if level == "" {
+		level = p.server.Name
+	}
+	return minecraft.ServerStatus{ServerName: p.server.Name, ServerSubName: level, GameType: mode, PlayerCount: players, MaxPlayers: maxPlayers}
 }
 
 func remoteGatewayListenConfig(log *slog.Logger, authorize func(string) bool) minecraft.ListenConfig {

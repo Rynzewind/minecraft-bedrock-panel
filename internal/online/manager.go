@@ -226,7 +226,7 @@ func (m *Manager) validate(s Settings, players []Player) error {
 		}
 		if v.ExternalPort != 0 {
 			if usedPorts[v.ExternalPort] {
-				return errors.New("each Online gateway needs a separate UDP port")
+				return errors.New("each Online gateway needs a separate TCP/UDP port")
 			}
 			usedPorts[v.ExternalPort] = true
 			for _, backend := range m.servers {

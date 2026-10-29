@@ -115,7 +115,9 @@ func TestMaximizedAccountActionsStayNextToTheirList(t *testing.T) {
 	time.AfterFunc(350*time.Millisecond, func() {
 		a.mw.Synchronize(func() {
 			var action, table win.RECT
-			win.GetWindowRect(a.reauth.Handle(), &action)
+			// Measure the whole action bar: Online access added another row,
+			// so Reauthenticate is no longer in the bottom row.
+			win.GetWindowRect(a.reauth.Parent().(*walk.Composite).Parent().Handle(), &action)
 			win.GetWindowRect(a.accounts.Handle(), &table)
 			if table.Top-action.Bottom > int32(a.mw.IntFrom96DPI(24)) {
 				t.Errorf("account list is separated from actions by %d pixels", table.Top-action.Bottom)

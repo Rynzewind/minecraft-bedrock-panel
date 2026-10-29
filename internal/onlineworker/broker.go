@@ -24,6 +24,8 @@ type Bootstrap struct {
 	GatewayHost              string `json:"gateway_host"`
 	GatewayPort              uint16 `json:"gateway_port"`
 	WorldName                string `json:"world_name"`
+	GameType                 string `json:"game_type,omitempty"`
+	MaxPlayers               int    `json:"max_players,omitempty"`
 	ExpectedProtocol         int    `json:"expected_protocol"`
 	AllowUnknownFriendsRoute bool   `json:"allow_unknown_friends_route"`
 }

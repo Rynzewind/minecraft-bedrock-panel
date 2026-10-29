@@ -35,6 +35,8 @@ type bootstrap struct {
 	GatewayHost              string `json:"gateway_host"`
 	GatewayPort              uint16 `json:"gateway_port"`
 	WorldName                string `json:"world_name"`
+	GameType                 string `json:"game_type,omitempty"`
+	MaxPlayers               int    `json:"max_players,omitempty"`
 	ExpectedProtocol         int    `json:"expected_protocol"`
 	AllowUnknownFriendsRoute bool   `json:"allow_unknown_friends_route"`
 }
@@ -100,6 +102,14 @@ func validGateway(s string) bool {
 func parseBootstrap(b []byte) (bootstrap, error) {
 	var c bootstrap
 	if strictJSON(b, &c) != nil || c.Type != "bootstrap" || c.Version != 1 || !validID(c.ServerID) || !validID(c.AccountID) || !validGateway(c.GatewayHost) || c.GatewayPort == 0 || c.ExpectedProtocol != protocol.CurrentProtocol || protocol.CurrentProtocol != 2225 || !c.AllowUnknownFriendsRoute || len(c.WorldName) == 0 || len(c.WorldName) > 128 {
+		return c, errBroker
+	}
+	if c.MaxPlayers < 0 {
+		return c, errBroker
+	}
+	switch c.GameType {
+	case "", "survival", "creative", "adventure":
+	default:
 		return c, errBroker
 	}
 	for _, r := range c.WorldName {
@@ -331,11 +341,21 @@ type runtimeFactory func(context.Context, bootstrap, *peer) (runtimeService, err
 
 func runtimeConfig(b bootstrap, p *peer) broadcaster.Config {
 	client := &http.Client{Timeout: 30 * time.Second}
+	worldType := broadcaster.WorldTypeSurvival
+	switch b.GameType {
+	case "creative":
+		worldType = broadcaster.WorldTypeCreative
+	case "adventure":
+		worldType = broadcaster.WorldTypeAdventure
+	}
 	return broadcaster.Config{
 		XBLTokenSource: broadcaster.NewXBLTokenSource(p.ctx, p),
-		Server:         broadcaster.ServerInfo{Host: b.GatewayHost, Port: b.GatewayPort},
-		Status:         broadcaster.Status{WorldName: b.WorldName, HostName: b.WorldName, Broadcast: int32(broadcaster.BroadcastSettingFriendsOnly)},
-		Relay:          nil, FriendSync: nil,
+		// Current Bedrock clients normally use Player Messaging (connection
+		// type 7). The upstream zero value selects the legacy type-3 path.
+		SignalingMode: broadcaster.SignalingModeJSONRPC,
+		Server:        broadcaster.ServerInfo{Host: b.GatewayHost, Port: b.GatewayPort},
+		Status:        broadcaster.Status{WorldName: b.WorldName, HostName: b.WorldName, WorldType: worldType, MaxPlayers: b.MaxPlayers, Broadcast: int32(broadcaster.BroadcastSettingFriendsOnly)},
+		Relay:         nil, FriendSync: nil,
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), HTTPClient: client,
 		ListenConfig: minecraft.ListenConfig{AuthenticationDisabled: false, HTTPClient: client, Allow: func(_ net.Addr, id login.IdentityData, _ login.ClientData) (string, bool) {
 			if !p.authorize(id.XUID) {

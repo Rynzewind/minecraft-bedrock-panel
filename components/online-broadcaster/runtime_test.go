@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	broadcaster "github.com/HashimTheArab/go-mcxboxbroadcast"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 	"io"
 	"strings"
@@ -15,7 +16,45 @@ import (
 
 const goodBootstrap = `{"type":"bootstrap","version":1,"server_id":"server-1","account_id":"account-1","gateway_host":"8.8.8.8","gateway_port":19140,"world_name":"World","expected_protocol":2225,"allow_unknown_friends_route":true}`
 
+func TestRuntimeUsesCurrentPlayerMessagingSignaling(t *testing.T) {
+	b, err := parseBootstrap([]byte(goodBootstrap))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newPeer(context.Background(), io.Discard, b)
+	defer p.close()
+	c := runtimeConfig(b, p)
+	if c.SignalingMode != broadcaster.SignalingModeJSONRPC {
+		t.Fatalf("Friends session uses legacy/default signaling: %q", c.SignalingMode)
+	}
+	if len(c.SubAccounts) != 0 {
+		t.Fatal("separate broadcaster workers must not use JSON-RPC-incompatible sub-accounts")
+	}
+}
+
+func TestBroadcasterPreservesConfiguredWorldType(t *testing.T) {
+	for _, mode := range []string{"creative", "survival", "adventure"} {
+		input := strings.Replace(goodBootstrap, `"world_name":"World"`, `"world_name":"World","game_type":"`+mode+`","max_players":10`, 1)
+		b, err := parseBootstrap([]byte(input))
+		if err != nil {
+			t.Fatalf("valid %s metadata rejected: %v", mode, err)
+		}
+		p := newPeer(context.Background(), io.Discard, b)
+		c := runtimeConfig(b, p)
+		p.close()
+		if !strings.EqualFold(c.Status.WorldType, mode) || c.Status.MaxPlayers != 10 || c.Status.WorldName != "World" {
+			t.Fatalf("wrong broadcaster status: %+v", c.Status)
+		}
+	}
+}
+
 func TestBootstrapValidation(t *testing.T) {
+	for _, extra := range []string{`,"game_type":"builder"`, `,"game_type":"Creative"`, `,"max_players":-1`} {
+		input := strings.Replace(goodBootstrap, `"world_name":"World"`, `"world_name":"World"`+extra, 1)
+		if _, err := parseBootstrap([]byte(input)); err == nil {
+			t.Fatalf("invalid metadata accepted: %s", extra)
+		}
+	}
 	for _, s := range []string{`{}`, strings.Replace(goodBootstrap, `2225`, `2193`, 1), strings.Replace(goodBootstrap, `true`, `false`, 1), strings.Replace(goodBootstrap, `8.8.8.8`, `localhost`, 1), strings.Replace(goodBootstrap, `8.8.8.8`, `203.0.113.8`, 1), strings.Replace(goodBootstrap, `19140`, `0`, 1), strings.Replace(goodBootstrap, `"version":1`, `"version":1,"refresh_token":"SECRET"`, 1)} {
 		if _, err := parseBootstrap([]byte(s)); err == nil {
 			t.Fatal("unsafe bootstrap accepted")

@@ -187,6 +187,32 @@ func BuildPlan(backends []Backend, localAddresses []string) (Plan, error) {
 		h := sha256.Sum256([]byte(b.Program))
 		p.Rules = append(p.Rules, RuleSpec{DynamicTarget: "Any", ICMPTypes: []string{"Any"}, Name: "NetherNet-OnlineGuard-" + hex.EncodeToString(h[:8]), Group: RuleGroup, Program: b.Program, Direction: "Inbound", Action: "Block", Protocol: "Any", Service: "Any", Package: "Any", Authentication: "NotRequired", Encryption: "NotRequired", EdgeTraversalPolicy: "Block", Enabled: true, Profiles: []string{"Domain", "Private", "Public"}, LocalAddresses: []string{"Any"}, RemoteAddresses: complement(local), LocalPorts: []string{"Any"}, RemotePorts: []string{"Any"}, InterfaceAliases: []string{"Any"}, InterfaceTypes: []string{"Any"}, LocalUsers: []string{"Any"}, RemoteUsers: []string{"Any"}, RemoteMachines: []string{"Any"}, Platforms: []string{}})
 	}
+	// Exempt host sources only in address families actually used by this
+	// program's backend endpoints. IPv4-only helpers need no global/link-local
+	// IPv6 exceptions: privacy-address rotation must not invalidate their rules.
+	// Keep explicit loopback in both families, and combine shared-program targets.
+	for i := range p.Rules {
+		v4, v6 := false, false
+		for _, b := range p.Backends {
+			if b.Program != p.Rules[i].Program {
+				continue
+			}
+			host, _, _ := net.SplitHostPort(b.Target)
+			if netip.MustParseAddr(host).Is4() {
+				v4 = true
+			} else {
+				v6 = true
+			}
+		}
+		var allowed []string
+		for _, value := range local {
+			a := netip.MustParseAddr(value)
+			if a.IsLoopback() || (a.Is4() && v4) || (!a.Is4() && v6) {
+				allowed = append(allowed, value)
+			}
+		}
+		p.Rules[i].RemoteAddresses = complement(allowed)
+	}
 	sort.Slice(p.Backends, func(i, j int) bool { return p.Backends[i].ServerID < p.Backends[j].ServerID })
 	sort.Slice(p.Rules, func(i, j int) bool { return p.Rules[i].Name < p.Rules[j].Name })
 	b, _ := json.Marshal(p)
@@ -232,14 +258,14 @@ func equalStrings(a, b []string) bool {
 func equalRule(a, b RuleSpec) bool {
 	a.ICMPTypes = sorted(a.ICMPTypes)
 	b.ICMPTypes = sorted(b.ICMPTypes)
-	a.RemoteDynamicKeywordAddresses = sorted(a.RemoteDynamicKeywordAddresses)
-	b.RemoteDynamicKeywordAddresses = sorted(b.RemoteDynamicKeywordAddresses)
+	a.RemoteDynamicKeywordAddresses = sorted(nonempty(a.RemoteDynamicKeywordAddresses))
+	b.RemoteDynamicKeywordAddresses = sorted(nonempty(b.RemoteDynamicKeywordAddresses))
 	a.Profiles = sorted(a.Profiles)
 	b.Profiles = sorted(b.Profiles)
 	a.LocalAddresses = sorted(a.LocalAddresses)
 	b.LocalAddresses = sorted(b.LocalAddresses)
-	a.RemoteAddresses = sorted(a.RemoteAddresses)
-	b.RemoteAddresses = sorted(b.RemoteAddresses)
+	a.RemoteAddresses = normalizedRanges(a.RemoteAddresses)
+	b.RemoteAddresses = normalizedRanges(b.RemoteAddresses)
 	a.LocalPorts = sorted(a.LocalPorts)
 	b.LocalPorts = sorted(b.LocalPorts)
 	a.RemotePorts = sorted(a.RemotePorts)
@@ -254,17 +280,44 @@ func equalRule(a, b RuleSpec) bool {
 	b.RemoteUsers = sorted(b.RemoteUsers)
 	a.RemoteMachines = sorted(a.RemoteMachines)
 	b.RemoteMachines = sorted(b.RemoteMachines)
-	a.Platforms = sorted(a.Platforms)
-	b.Platforms = sorted(b.Platforms)
+	a.Platforms = sorted(nonempty(a.Platforms))
+	b.Platforms = sorted(nonempty(b.Platforms))
 	a.Program = strings.ToLower(a.Program)
 	b.Program = strings.ToLower(b.Program)
 	x, _ := json.Marshal(a)
 	y, _ := json.Marshal(b)
 	return string(x) == string(y)
 }
-func sorted(v []string) []string         { o := append([]string{}, v...); sort.Strings(o); return o }
-func Evaluate(p Plan, e Evidence) Report { return EvaluateAt(p, e, time.Now().UTC()) }
+func sorted(v []string) []string { o := append([]string{}, v...); sort.Strings(o); return o }
+
+// Windows serializes absent optional CIM fields as either [] or [""].
+func nonempty(values []string) []string {
+	var out []string
+	for _, v := range values {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// Windows renders singleton address ranges as individual addresses.
+func normalizedRanges(values []string) []string {
+	out := append([]string(nil), values...)
+	for i, v := range out {
+		if a, err := netip.ParseAddr(v); err == nil && a.Zone() == "" {
+			out[i] = a.String() + "-" + a.String()
+		}
+	}
+	return sorted(out)
+}
+func Evaluate(p Plan, e Evidence) Report {
+	return evaluateAt(p, e, time.Now().UTC(), unrelatedLocalUserBlock)
+}
 func EvaluateAt(p Plan, e Evidence, now time.Time) Report {
+	return evaluateAt(p, e, now, nil)
+}
+func evaluateAt(p Plan, e Evidence, now time.Time, disjoint func(RuleSpec, []Backend) bool) Report {
 	r := Report{PlanID: p.ID, Limitations: []string{"Snapshot comparison is not a packet-enforcement test or permission to activate Online.", "Host IP addresses are not proof of helper process identity or physical LAN locality; a local relay or source spoofing requires separate controls.", "Local helper connectivity and external IPv4/IPv6 direct-BDS denial require supervised positive and negative tests before activation.", "Address, executable, firewall policy and service changes invalidate this snapshot; continuous monitoring and stop-before-drift handling are required.", "Firewall does not replace authenticated per-server remote gateway ACL enforcement; router/NAT and other WFP providers are not verified."}}
 	block := func(s string) { r.Blockers = append(r.Blockers, s) }
 	rebuilt, err := BuildPlan(p.Backends, p.LocalAddresses)
@@ -297,7 +350,7 @@ func EvaluateAt(p Plan, e Evidence, now time.Time) Report {
 			block("Duplicate firewall profile evidence.")
 		}
 		profiles[profile.Name] = true
-		if !profile.Enabled || !profile.AllowInboundRules || len(profile.DisabledInterfaceAliases) != 0 {
+		if !profile.Enabled || !profile.AllowInboundRules || len(nonempty(profile.DisabledInterfaceAliases)) != 0 {
 			block("Firewall profile is disabled, disallows inbound rules or bypasses interfaces: " + profile.Name)
 		}
 	}
@@ -320,6 +373,9 @@ func EvaluateAt(p Plan, e Evidence, now time.Time) Report {
 			}
 		}
 		if !owned && rule.Spec.Action == "Block" {
+			if disjoint != nil && disjoint(rule.Spec, p.Backends) {
+				continue
+			}
 			for _, b := range p.Backends {
 				if rule.Spec.Program == "" || strings.EqualFold(rule.Spec.Program, "Any") || strings.EqualFold(rule.Spec.Program, b.Program) {
 					block("An additional inbound block may break local helper access; manual conflict review is required.")
@@ -347,9 +403,13 @@ func EvaluateAt(p Plan, e Evidence, now time.Time) Report {
 // including Enforced; ProfileInactive merely means another profile is not
 // currently selected and is not a loss of enforcement for an Any-profile rule.
 func enforced(status string) bool {
-	if status == "Full" { return true }
+	if status == "Full" {
+		return true
+	}
 	for _, value := range strings.Split(status, ",") {
-		if strings.TrimSpace(value) == "Enforced" { return true }
+		if strings.TrimSpace(value) == "Enforced" {
+			return true
+		}
 	}
 	return false
 }

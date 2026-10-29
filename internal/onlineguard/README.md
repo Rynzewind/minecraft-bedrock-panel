@@ -17,7 +17,11 @@ For each distinct configured BDS executable, generate one named inbound **Block*
 rule, enabled on Domain, Private and Public, for **Any** protocol, local/remote
 ports, local address, interface, service and package. Its remote addresses are
 exact IPv4 and IPv6 ranges covering every address **except** the current host's
-own addresses and explicit `127.0.0.1` / `::1`. These are host addresses, never
+own addresses in the families used by that program's configured backend targets,
+plus explicit `127.0.0.1` / `::1`. An IPv4-only backend has no global or link-local
+IPv6 source exceptions, so IPv6 privacy-address rotation cannot change its rule.
+Programs shared by IPv4 and IPv6 backends retain both host-source families.
+These are host addresses, never
 `LocalSubnet`, the LAN prefix, router, NAT address or a claimed client address.
 The spec's program path is a literal absolute local `bedrock_server.exe` path.
 `Target` must be the existing configured host-owned helper endpoint, including
@@ -27,7 +31,16 @@ Do not replace this with an all-address block plus a host allow: explicit blocks
 win, so the allow would not restore helper access. Ordinary existing broad allow
 rules cannot override the generated disjoint blocks. Authenticated IPsec bypass
 rules **can** override explicit blocks, so the evaluator rejects their presence.
-Additional blocks matching BDS or any program require manual conflict review.
+Additional blocks matching BDS or any program require manual conflict review,
+unless their sole simple LocalUser SID is proven absent from every running
+configured backend's user and group token SIDs. Missing processes, unreadable or
+restricted tokens and complex/unknown user scopes remain blocking. This checks
+actual backend tokens, never rule names or the helper's assumed identity; it
+does not change or bypass other applications' firewall rules.
+
+Empty optional CIM array entries and Windows singleton-address formatting are
+normalized during comparison. Actual interface exclusions, altered address
+coverage and narrowed protection conditions still fail closed.
 
 ## Concrete approval-ready rollout
 

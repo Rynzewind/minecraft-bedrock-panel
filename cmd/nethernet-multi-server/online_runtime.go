@@ -23,6 +23,7 @@ import (
 	"nethernet-multi-server/internal/accountstore"
 	"nethernet-multi-server/internal/backend"
 	"nethernet-multi-server/internal/config"
+	identitystore "nethernet-multi-server/internal/identity"
 	"nethernet-multi-server/internal/online"
 	"nethernet-multi-server/internal/onlineguard"
 	"nethernet-multi-server/internal/onlineruntime"
@@ -52,7 +53,7 @@ type onlineRuntimeHost struct {
 
 // startOnlineRuntime is called only after normal LAN startup and installation
 // activation checks. Both background loops remain idle for disabled Online.
-func startOnlineRuntime(parent context.Context, cfg config.Config, am *accounts.Manager, om *online.Manager, sm *supervisor.Manager, recorder proxyservice.SessionRecorder, log *slog.Logger, workerPath string) *onlineRuntimeHost {
+func startOnlineRuntime(parent context.Context, cfg config.Config, am *accounts.Manager, om *online.Manager, sm *supervisor.Manager, recorder proxyservice.SessionRecorder, log *slog.Logger, workerPath, identityDirectory string) *onlineRuntimeHost {
 	ctx, cancel := context.WithCancel(parent)
 	h := &onlineRuntimeHost{ctx: ctx, cancel: cancel, cfg: cfg, accounts: am, online: om, supervisor: sm, wake: make(chan struct{}, 1), inspectWake: make(chan struct{}, 1), blockers: map[string]string{}, protected: map[string]bool{}}
 	h.coordinator = onlineruntime.New(onlineruntime.Factories{
@@ -64,10 +65,29 @@ func startOnlineRuntime(parent context.Context, cfg config.Config, am *accounts.
 			if !ok {
 				return nil, errors.New("Online server unavailable")
 			}
-			return proxyservice.StartRemoteGateway(ctx, net.JoinHostPort("0.0.0.0", strconv.Itoa(d.Port)), proxyservice.RemoteGatewayOptions{Server: server, Leaser: am, Dialer: backend.NetherNetDialer{Log: log}, Recorder: recorder, Authorize: func(xuid string) bool { return h.authorize(d.ServerID, xuid) }, Log: log})
+			server.Name = d.World
+			networkID, err := server.ParsedNetworkID()
+			if err != nil {
+				return nil, err
+			}
+			key, _, err := (identitystore.Store{Directory: identityDirectory}).LoadOrCreate(networkID)
+			if err != nil {
+				return nil, err
+			}
+			publicIP, err := onlineGatewayIPv4(ctx, d.Host)
+			if err != nil {
+				return nil, err
+			}
+			return proxyservice.StartRemoteGateway(ctx, net.JoinHostPort("0.0.0.0", strconv.Itoa(d.Port)), proxyservice.RemoteGatewayOptions{OperatorKey: key, PublicIPv4: publicIP, InterfaceIP: net.ParseIP(cfg.InterfaceIP), Server: server, Leaser: am, Dialer: backend.NetherNetDialer{Log: log}, Recorder: recorder, Authorize: func(xuid string) bool { return h.authorize(d.ServerID, xuid) }, Log: log})
 		},
 		StartWorker: func(ctx context.Context, d onlineruntime.Desired, event func(onlineruntime.Event)) (onlineruntime.Worker, error) {
+			server, ok := h.server(d.ServerID)
+			if !ok {
+				return nil, errors.New("Online server unavailable")
+			}
 			bootstrap := onlineworker.Bootstrap{Type: "bootstrap", Version: 1, ServerID: d.ServerID, AccountID: d.AccountID, GatewayHost: d.Host, GatewayPort: uint16(d.Port), WorldName: d.World, ExpectedProtocol: online.WorkerProtocol, AllowUnknownFriendsRoute: d.AllowUnknownFriendsRoute}
+			bootstrap.GameType = strings.ToLower(server.GameType)
+			bootstrap.MaxPlayers = int(server.MaxPlayerCount)
 			return onlineworker.Start(ctx, workerPath, bootstrap, onlineworker.Callbacks{
 				Token: func(tokenCtx context.Context) (*oauth2.Token, error) {
 					source, err := am.BroadcasterTokenSource(tokenCtx, d.AccountID)
@@ -101,6 +121,20 @@ func startOnlineRuntime(parent context.Context, cfg config.Config, am *accounts.
 	go h.loop()
 	go h.inspectLoop()
 	return h
+}
+
+func onlineGatewayIPv4(ctx context.Context, host string) (netip.Addr, error) {
+	addresses, err := net.DefaultResolver.LookupNetIP(ctx, "ip4", host)
+	if err != nil {
+		return netip.Addr{}, errors.New("public gateway IPv4 resolution failed")
+	}
+	for _, a := range addresses {
+		a = a.Unmap()
+		if a.Is4() && a.IsGlobalUnicast() && !a.IsPrivate() && !a.IsLoopback() && !a.IsLinkLocalUnicast() {
+			return a, nil
+		}
+	}
+	return netip.Addr{}, errors.New("public gateway requires a routable IPv4 address")
 }
 
 func (h *onlineRuntimeHost) server(id string) (config.Server, bool) {

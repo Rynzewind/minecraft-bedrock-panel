@@ -47,24 +47,24 @@ func (m *onlinePlayerModel) Value(r, c int) any {
 }
 
 type onlinePage struct {
-	a                                       *adminWindow
-	tabs                                    *walk.TabWidget
-	cards                                   map[string]*onlineCard
-	settings                                online.Settings
-	accounts                                []service.PublicAccount
-	choices                                 []service.PublicAccount
-	knownChoices                            []service.PublicAccount
-	playerModel                             onlinePlayerModel
-	players                                 *walk.TableView
-	gamertag, publicHost, preferred         *walk.LineEdit
-	subnets                                 *walk.TextEdit
+	a                                                     *adminWindow
+	tabs                                                  *walk.TabWidget
+	cards                                                 map[string]*onlineCard
+	settings                                              online.Settings
+	accounts                                              []service.PublicAccount
+	choices                                               []service.PublicAccount
+	knownChoices                                          []service.PublicAccount
+	playerModel                                           onlinePlayerModel
+	players                                               *walk.TableView
+	gamertag, publicHost, preferred                       *walk.LineEdit
+	subnets                                               *walk.TextEdit
 	lookupAccount, knownAccount, serverFilter, typeFilter *walk.ComboBox
-	creative, survival                      *walk.CheckBox
-	allowUnknownFriendsRoute                *walk.CheckBox
-	message                                 *walk.TextLabel
-	diagnostics, logs                       *walk.TextEdit
-	busy                                    bool
-	loaded                                  bool
+	creative, survival                                    *walk.CheckBox
+	allowUnknownFriendsRoute                              *walk.CheckBox
+	message                                               *walk.TextLabel
+	diagnostics, logs                                     *walk.TextEdit
+	busy                                                  bool
+	loaded                                                bool
 }
 
 func (a *adminWindow) onlineTab() TabPage {
@@ -88,7 +88,7 @@ func (a *adminWindow) onlineTab() TabPage {
 	connectivity := []Widget{TextLabel{Text: "Existing LAN entries stay local. Friends connections with unknown location use the authenticated gateway only with explicit consent below. A local device choosing Friends may use the Internet/hairpin route."}, Label{Text: "Public IPv4 or hostname for the authenticated gateway:"}, LineEdit{AssignTo: &p.publicHost}, Label{Text: "Preferred LAN adapter/interface (preference only; existing LAN configuration is unchanged):"}, LineEdit{AssignTo: &p.preferred}, Label{Text: "Explicit trusted local subnets (one per line; not proof of a joining client's location):"}, TextEdit{AssignTo: &p.subnets, MinSize: Size{Height: 60}, MaxSize: Size{Height: 100}}}
 	connectivity = append(connectivity, CheckBox{AssignTo: &p.allowUnknownFriendsRoute, Text: "Allow unknown-location Friends joins through the authenticated gateway (local Friends may use Internet routing)"})
 	for _, id := range []string{"creative", "survival"} {
-		connectivity = append(connectivity, Label{Text: strings.Title(id) + " gateway UDP port (0 = unset; firewall and router changes require a separate review):"}, NumberEdit{AssignTo: &p.cards[id].port, MinValue: 0, MaxValue: 65535, Decimals: 0})
+		connectivity = append(connectivity, Label{Text: strings.Title(id) + " gateway TCP + UDP port (0 = unset; firewall and router changes require a separate review):"}, NumberEdit{AssignTo: &p.cards[id].port, MinValue: 0, MaxValue: 65535, Decimals: 0})
 	}
 	connectivity = append(connectivity, Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Save connectivity settings", OnClicked: p.save}, PushButton{Text: "Inspect local networking", OnClicked: p.inspect}}}, TextEdit{AssignTo: &p.diagnostics, ReadOnly: true, MinSize: Size{Height: 150}, Text: "Router forwarding must not point at an unprotected BDS backend. This build does not open firewall ports, configure a router or verify external reachability. Secure ingress and protocol compatibility are required before forwarding can be planned."})
 	logs := TabPage{Title: "Logs", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Configuration and policy events only. No connection, transfer or routing success is invented. No authentication secrets are logged."}, Composite{Layout: HBox{}, Children: []Widget{ComboBox{AssignTo: &p.serverFilter, Model: []string{"All servers", "creative", "survival"}, CurrentIndex: 0}, ComboBox{AssignTo: &p.typeFilter, Model: []string{"All event types", "settings", "authorization", "runtime"}, CurrentIndex: 0}, PushButton{Text: "Refresh logs", OnClicked: p.loadLogs}}}, TextEdit{AssignTo: &p.logs, ReadOnly: true, MinSize: Size{Height: 180}, StretchFactor: 1}}}
@@ -233,9 +233,15 @@ func (p *onlinePage) permissions() []string {
 }
 func (p *onlinePage) grantKnownAccount() {
 	i := p.knownAccount.CurrentIndex()
-	if i <= 0 || i > len(p.knownChoices) { p.message.SetText("Choose an already-added Xbox account."); return }
+	if i <= 0 || i > len(p.knownChoices) {
+		p.message.SetText("Choose an already-added Xbox account.")
+		return
+	}
 	servers := p.permissions()
-	if len(servers) == 0 { p.message.SetText("Select Creative, Survival, or both."); return }
+	if len(servers) == 0 {
+		p.message.SetText("Select Creative, Survival, or both.")
+		return
+	}
 	p.call("online.players.grant_account", map[string]any{"account_id": p.knownChoices[i-1].ID, "servers": servers}, nil, p.load)
 }
 func (p *onlinePage) resolve() {
