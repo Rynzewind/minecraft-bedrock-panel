@@ -335,10 +335,21 @@ func EvaluateAt(p Plan, e Evidence, now time.Time) Report {
 			continue
 		}
 		got := found[0]
-		if !equalRule(got.Spec, want) || got.PrimaryStatus != "OK" || got.EnforcementStatus != "Full" {
+		if !equalRule(got.Spec, want) || got.PrimaryStatus != "OK" || !enforced(got.EnforcementStatus) {
 			block("A required protection rule differs or is not fully enforced: " + want.Name)
 		}
 	}
 	r.SnapshotMatches = len(r.Blockers) == 0
 	return r
+}
+
+// Windows reports an enabled rule as either Full or a comma-separated set
+// including Enforced; ProfileInactive merely means another profile is not
+// currently selected and is not a loss of enforcement for an Any-profile rule.
+func enforced(status string) bool {
+	if status == "Full" { return true }
+	for _, value := range strings.Split(status, ",") {
+		if strings.TrimSpace(value) == "Enforced" { return true }
+	}
+	return false
 }

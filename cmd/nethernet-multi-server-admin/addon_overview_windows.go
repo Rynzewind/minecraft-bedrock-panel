@@ -50,7 +50,7 @@ func addonStatusColor(status string) walk.Color {
 }
 func (p *updatesPage) addonsTab() TabPage {
 	return TabPage{Title: "Add-ons", Layout: VBox{}, Children: []Widget{
-		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{TextLabel{Text: "Installed add-ons", StretchFactor: 1}, PushButton{Text: "Check selected", OnClicked: p.checkAddon}, PushButton{Text: "Check all linked", OnClicked: p.checkAllAddons}, PushButton{Text: "Refresh", OnClicked: p.loadSources}, PushButton{AssignTo: &p.settingsCog, Text: "⚙ Settings", ToolTipText: "API key, source links, manual reviews and staging", OnClicked: p.openAddonSettings}}},
+		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{TextLabel{Text: "Installed add-ons", StretchFactor: 1}, PushButton{AssignTo: &p.quickUpdate, Text: "Update selected...", ToolTipText: "Download, verify and stage the selected red add-on", OnClicked: p.quickUpdateSelected}, PushButton{AssignTo: &p.quickUpdateAll, Text: "Update all verified...", ToolTipText: "Download, verify and stage every red add-on with a confirmed source", OnClicked: p.quickUpdateAllVerified}, PushButton{Text: "Check selected", OnClicked: p.checkAddon}, PushButton{Text: "Check all linked", OnClicked: p.checkAllAddons}, PushButton{Text: "Refresh", OnClicked: p.loadSources}, PushButton{AssignTo: &p.settingsCog, Text: "⚙ Settings", ToolTipText: "API key, source links, manual reviews and staging", OnClicked: p.openAddonSettings}}},
 		TextLabel{Text: "Green: up to date • Red: outdated • Amber: unknown. Checks verify source manifests without installing anything. Last-check evidence expires after 24 hours."},
 		TableView{AssignTo: &p.addonTable, Model: &p.addonModel, StretchFactor: 1, MinSize: Size{Height: 160}, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Add-on", Width: 290}, {Title: "Type", Width: 80}, {Title: "Library", Width: 90}, {Title: "Creative", Width: 140}, {Title: "Survival", Width: 140}, {Title: "Update status", Width: 120}, {Title: "Last checked", Width: 150}}},
 		TextEdit{AssignTo: &p.addonLog, ReadOnly: true, MinSize: Size{Height: 55}, MaxSize: Size{Height: 85}, Text: "Select a pack to check its source. Configure sources and manual reviews using the cogwheel."},
@@ -156,7 +156,7 @@ func (p *updatesPage) createAddonSettings() (*walk.Dialog, error) {
 		return nil, e
 	}
 	dlg := p.settingsDialog
-	dlg.Starting().Attach(func() { fitProgressDialogToWorkArea(dlg) })
+	dlg.Starting().Attach(func() { fitAddonSettingsDialogToWorkArea(dlg) })
 	dlg.Closing().Attach(func(cancel *bool, _ walk.CloseReason) { *cancel = p.addonBusy })
 	p.populateAddonSettings(selected)
 	return dlg, nil

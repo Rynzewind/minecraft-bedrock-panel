@@ -82,16 +82,40 @@ func TestDownloadVerifiesBytesAndKeepsKeyOffCDN(t *testing.T) {
 		t.Fatal("ignored author distribution policy")
 	}
 }
-func TestProductionClientsRefuseCredentialRedirects(t *testing.T) {
+func TestProductionClientsKeepCredentialRedirectsClosedAndConstrainCDNRedirects(t *testing.T) {
 	p := NewProvider("secret-key")
 	if e := p.api.CheckRedirect(&http.Request{}, nil); e == nil {
 		t.Fatal("API redirect allowed")
 	}
-	if e := p.cdn.CheckRedirect(&http.Request{}, nil); e == nil {
-		t.Fatal("CDN redirect allowed")
+	approved, _ := http.NewRequest("GET", "https://edge.forgecdn.net/files/example.mcaddon", nil)
+	if e := p.cdn.CheckRedirect(approved, []*http.Request{approved}); e != nil {
+		t.Fatalf("approved CDN redirect refused: %v", e)
+	}
+	unapproved, _ := http.NewRequest("GET", "https://example.com/file.zip", nil)
+	if e := p.cdn.CheckRedirect(unapproved, []*http.Request{approved}); e == nil {
+		t.Fatal("unapproved CDN redirect allowed")
 	}
 	if _, e := p.Download(context.Background(), Project{ID: 42}, ReleaseFile{ID: 1, ModID: 42, IsAvailable: true, FileLength: 1, DownloadURL: "https://example.com/file.zip"}, t.TempDir()); e == nil {
 		t.Fatal("unapproved CDN allowed")
+	}
+}
+
+func TestProviderAcceptsLegacyFileGameIDAfterProjectValidation(t *testing.T) {
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/games":
+			w.Write([]byte(`{"data":[{"id":99,"slug":"minecraft-bedrock"}],"pagination":{"totalCount":1}}`))
+		case "/v1/mods/42":
+			w.Write([]byte(`{"data":{"id":42,"gameId":99,"allowModDistribution":true}}`))
+		case "/v1/mods/42/files":
+			w.Write([]byte(`{"data":[{"id":1,"modId":42,"gameId":0,"isAvailable":true,"fileStatus":4,"releaseType":1}],"pagination":{"totalCount":1}}`))
+		}
+	}))
+	defer s.Close()
+	p := newProvider("secret-key", s.URL, s.Client(), s.Client())
+	_, files, e := p.Check(context.Background(), Source{Provider: "curseforge", ProjectID: 42, Channel: "stable"})
+	if e != nil || len(files) != 1 {
+		t.Fatalf("legacy file game ID was rejected: %v %+v", e, files)
 	}
 }
 func TestSourceResultDoesNotOverwriteEditedSource(t *testing.T) {

@@ -122,7 +122,7 @@ type adminWindow struct {
 	viewport                                             *walk.ScrollView
 	events                                               *walk.TextEdit
 	serverLog                                            *walk.TextEdit
-	add, edit, reauth, remove, reassign, unpair, setRole *walk.PushButton
+	add, edit, reauth, remove, reassign, unpair, setRole, onlineAccess *walk.PushButton
 	start, stop, restart                                 *walk.PushButton
 	startAll, stopAll, restartAll                        *walk.PushButton
 	serverSettingsButton                                 *walk.PushButton
@@ -191,7 +191,7 @@ func runAdmin() {
 	a.closed.Store(true)
 }
 func (a *adminWindow) create() error {
-	accountPool := GroupBox{AssignTo: &a.accountPool, Title: "Account Pool", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.accounts, Model: &a.accountModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Person", Width: 120}, {Title: "Email label", Width: 180}, {Title: "Xbox gamertag", Width: 135}, {Title: "Status", Width: 85}, {Title: "Assigned / active user", Width: 135}, {Title: "Server", Width: 75}, {Title: "Account role", Width: 120}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.add, Text: "Add account", OnClicked: a.addAccount}, PushButton{Text: "Add broadcaster", OnClicked: a.addBroadcasterAccount}, PushButton{Text: "Account role...", OnClicked: a.setAccountRole}, PushButton{AssignTo: &a.edit, Text: "Edit labels", OnClicked: a.editLabels}, PushButton{AssignTo: &a.reauth, Text: "Reauthenticate", OnClicked: a.reauthenticate}, PushButton{AssignTo: &a.remove, Text: "Remove", OnClicked: a.removeAccount}}}}}
+	accountPool := GroupBox{AssignTo: &a.accountPool, Title: "Account Pool", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.accounts, Model: &a.accountModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Person", Width: 120}, {Title: "Email label", Width: 180}, {Title: "Xbox gamertag", Width: 135}, {Title: "Status", Width: 85}, {Title: "Assigned / active user", Width: 135}, {Title: "Server", Width: 75}, {Title: "Account role", Width: 120}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.add, Text: "Add account", OnClicked: a.addAccount}, PushButton{Text: "Add broadcaster", OnClicked: a.addBroadcasterAccount}, PushButton{Text: "Account role...", OnClicked: a.setAccountRole}, PushButton{AssignTo: &a.onlineAccess, Text: "Online access...", ToolTipText: "Grant selected account access to Creative and/or Survival Friends connections", OnClicked: a.grantSelectedAccountOnlineAccess}, PushButton{AssignTo: &a.edit, Text: "Edit labels", OnClicked: a.editLabels}, PushButton{AssignTo: &a.reauth, Text: "Reauthenticate", OnClicked: a.reauthenticate}, PushButton{AssignTo: &a.remove, Text: "Remove", OnClicked: a.removeAccount}}}}}
 	consoleUsers := GroupBox{AssignTo: &a.consoleUsers, Title: "Console Users", StretchFactor: 1, Layout: VBox{}, Children: []Widget{TableView{AssignTo: &a.players, Model: &a.playerModel, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Console gamertag", Width: 130}, {Title: "Assigned account", Width: 220}, {Title: "Role (all servers)", Width: 110}, {Title: "Status", Width: 80}, {Title: "Last seen", Width: 125}}, OnCurrentIndexChanged: a.updateActions}, Composite{Layout: HBox{}, Children: []Widget{PushButton{AssignTo: &a.reassign, Text: "Assign / Reassign", OnClicked: a.reassignPlayer}, PushButton{AssignTo: &a.unpair, Text: "Unpair", OnClicked: a.unpairPlayer}, PushButton{AssignTo: &a.setRole, Text: "Set role...", ToolTipText: "Set the selected console user role on all servers", OnClicked: a.setPlayerRole}}}}}
 	// Avoid nested default padding around account actions.
 	accountPool.Layout = VBox{Margins: Margins{Left: 6, Top: 6, Right: 6, Bottom: 6}, Spacing: 6}
@@ -199,7 +199,12 @@ func (a *adminWindow) create() error {
 	for _, group := range []*GroupBox{&accountPool, &consoleUsers} {
 		bar := group.Children[1].(Composite)
 		bar.Layout = VBox{MarginsZero: true, Spacing: 6}
-		var rows []Widget;for start:=0;start<len(bar.Children);start+=2{end:=min(start+2,len(bar.Children));rows=append(rows,Composite{Layout:HBox{MarginsZero:true,Spacing:6},Children:bar.Children[start:end]})};bar.Children=rows
+		var rows []Widget
+		for start := 0; start < len(bar.Children); start += 2 {
+			end := min(start+2, len(bar.Children))
+			rows = append(rows, Composite{Layout: HBox{MarginsZero: true, Spacing: 6}, Children: bar.Children[start:end]})
+		}
+		bar.Children = rows
 		group.Children[1] = bar
 	}
 	// Keep account actions visible above the lists at compact sizes.
@@ -890,6 +895,11 @@ func (a *adminWindow) call(method string, params any, success string) {
 			} else {
 				a.appendEvent(success)
 				a.refresh()
+				// Account-side Online access changes also update the Online ACL table.
+				// Reload it here so the Creative/Survival ticks are never left stale.
+				if a.online != nil && a.online.loaded {
+					a.online.load()
+				}
 			}
 		})
 	}()
@@ -977,4 +987,3 @@ func showSignInDialog(owner walk.Form, enrollment enrollmentView, expectedGamert
 	}
 	return err
 }
-

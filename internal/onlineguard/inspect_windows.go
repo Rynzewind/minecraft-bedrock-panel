@@ -28,6 +28,14 @@ func Inspect(ctx context.Context) (Evidence, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	b, e := cmd.Output()
 	if e != nil {
+		// On a standard Windows install, ActiveStore inspection can be restricted
+		// to an elevated token. A dedicated SYSTEM task may write the exact same
+		// read-only snapshot to ProgramData. The evaluator still rejects a stale,
+		// incomplete, or mismatching snapshot, so this is never an availability
+		// bypass for the Online gateway.
+		if cached, cacheErr := cachedEvidence(); cacheErr == nil {
+			return cached, nil
+		}
 		return Evidence{}, errors.New("read-only firewall inspection unavailable; no protection verified")
 	}
 	if len(b) > 16<<20 {
@@ -46,11 +54,33 @@ func Inspect(ctx context.Context) (Evidence, error) {
 	return evidence, nil
 }
 
+func cachedEvidence() (Evidence, error) {
+	programData := os.Getenv("ProgramData")
+	if programData == "" {
+		programData = `C:\ProgramData`
+	}
+	b, err := os.ReadFile(filepath.Join(programData, "NetherNet", "onlineguard-evidence.json"))
+	if err != nil || len(b) == 0 || len(b) > 16<<20 {
+		return Evidence{}, errors.New("cached firewall evidence unavailable")
+	}
+	var evidence Evidence
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if err = d.Decode(&evidence); err != nil {
+		return Evidence{}, errors.New("cached firewall evidence is invalid")
+	}
+	var extra any
+	if d.Decode(&extra) != io.EOF {
+		return Evidence{}, errors.New("cached firewall evidence has trailing output")
+	}
+	return evidence, nil
+}
+
 const inspectionScript = `
 $ErrorActionPreference='Stop'
 $ProgressPreference='SilentlyContinue'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
-function Values($value){ @($value | ForEach-Object { [string]$_ }) }
+function Values($value){ @($value | ForEach-Object { [string]$_ } | Where-Object { $_ -ne '' }) }
 function AnyValue($value){ if(-not $value){return 'Any'};[string]$value }
 $before=@(Get-NetIPAddress | ForEach-Object { (([string]$_.IPAddress -split '%')[0]) } | Sort-Object -Unique)
 $profiles=@(Get-NetFirewallProfile -PolicyStore ActiveStore | ForEach-Object {

@@ -70,7 +70,7 @@ func (c *Controller) handleOnline(ctx context.Context, method string, raw json.R
 	runtimeStatus, runtimeChanged, runtimeDiagnostics := c.onlineRuntimeStatus, c.onlineRuntimeChanged, c.onlineRuntimeDiagnostics
 	c.mu.Unlock()
 	switch method {
-	case "online.settings.save", "online.players.grant", "online.players.update", "online.players.revoke", "online.players.remove":
+	case "online.settings.save", "online.players.grant", "online.players.update", "online.players.grant_account", "online.players.revoke", "online.players.remove":
 		if runtimeChanged != nil {
 			defer runtimeChanged()
 		}
@@ -183,6 +183,15 @@ func (c *Controller) handleOnline(ctx context.Context, method string, raw json.R
 			}
 		}
 		return nil, fmt.Errorf("select an existing resolved player")
+	case "online.players.grant_account":
+		for _, account := range c.manager.Snapshot().Accounts {
+			if account.ID != p.AccountID { continue }
+			if account.XUID == "" || account.Gamertag == "" { return nil, fmt.Errorf("authenticate this account before granting Online access") }
+			player := online.Player{XUID: account.XUID, Gamertag: account.Gamertag, Permissions: map[string]bool{}}
+			for _, id := range p.Servers { player.Permissions[id] = true }
+			return nil, c.online.GrantResolved(player)
+		}
+		return nil, fmt.Errorf("selected account was not found")
 	case "online.players.revoke":
 		return nil, c.online.Revoke(p.XUID, p.Server)
 	case "online.players.remove":

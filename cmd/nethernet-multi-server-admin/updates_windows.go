@@ -18,6 +18,7 @@ type updatesPage struct {
 	keyConfigured                   bool
 	addonTable                      *walk.TableView
 	settingsCog                     *walk.PushButton
+	quickUpdate, quickUpdateAll     *walk.PushButton
 	addonModel                      addonOverviewModel
 	settingsDialog                  *walk.Dialog
 	settingsLog                     *walk.TextEdit

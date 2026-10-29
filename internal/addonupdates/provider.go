@@ -48,8 +48,30 @@ type Provider struct {
 }
 
 func NewProvider(key string) *Provider {
-	redirect := func(r *http.Request, via []*http.Request) error { return fmt.Errorf("redirect refused") }
-	return newProvider(key, "https://api.curseforge.com", &http.Client{Timeout: 30 * time.Second, CheckRedirect: redirect}, &http.Client{Timeout: 5 * time.Minute, CheckRedirect: redirect})
+	apiRedirect := func(r *http.Request, via []*http.Request) error { return fmt.Errorf("redirect refused") }
+	// CurseForge's public download URLs commonly redirect between its own CDN
+	// hosts. Keep API calls redirect-free (they carry the API key), while letting
+	// archive downloads follow only a small chain of HTTPS CurseForge CDN URLs.
+	cdnRedirect := func(r *http.Request, via []*http.Request) error {
+		if len(via) >= 5 || !approvedCurseForgeCDN(r.URL) {
+			return fmt.Errorf("redirect refused")
+		}
+		for _, previous := range via {
+			if !approvedCurseForgeCDN(previous.URL) {
+				return fmt.Errorf("redirect refused")
+			}
+		}
+		return nil
+	}
+	return newProvider(key, "https://api.curseforge.com", &http.Client{Timeout: 30 * time.Second, CheckRedirect: apiRedirect}, &http.Client{Timeout: 5 * time.Minute, CheckRedirect: cdnRedirect})
+}
+
+func approvedCurseForgeCDN(u *url.URL) bool {
+	if u == nil || u.Scheme != "https" || u.Port() != "" || u.User != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "forgecdn.net" || strings.HasSuffix(host, ".forgecdn.net")
 }
 func newProvider(key, base string, api, cdn *http.Client) *Provider {
 	return &Provider{key: key, base: base, api: api, cdn: cdn, test: base != "https://api.curseforge.com"}
@@ -184,7 +206,11 @@ func (p *Provider) Check(ctx context.Context, s Source) (Project, []ReleaseFile,
 			return project, nil, e
 		}
 		for _, f := range out.Data {
-			if f.GameID == game && f.ModID == project.ID && f.IsAvailable && (f.FileStatus == 4 || f.FileStatus == 10) && f.ReleaseType >= 1 && f.ReleaseType <= maxChannel {
+			// The project itself has already been verified as Bedrock. Some Bedrock
+			// projects return files with a legacy/missing gameId, so require the
+			// project relationship and verify the selected UUID from the archive
+			// instead of discarding an otherwise valid release on that metadata.
+			if f.ModID == project.ID && f.IsAvailable && (f.FileStatus == 4 || f.FileStatus == 10) && f.ReleaseType >= 1 && f.ReleaseType <= maxChannel {
 				files = append(files, f)
 			}
 		}
@@ -225,8 +251,7 @@ func (p *Provider) Download(ctx context.Context, project Project, f ReleaseFile,
 	if e != nil || u.User != nil {
 		return "", fmt.Errorf("invalid download URL")
 	}
-	host := strings.ToLower(u.Hostname())
-	if !p.test && (u.Scheme != "https" || u.Port() != "" || !(host == "forgecdn.net" || strings.HasSuffix(host, ".forgecdn.net"))) {
+	if !p.test && !approvedCurseForgeCDN(u) {
 		return "", fmt.Errorf("download host is not an approved CurseForge CDN; use source page")
 	}
 	req, e := http.NewRequestWithContext(ctx, "GET", raw, nil)

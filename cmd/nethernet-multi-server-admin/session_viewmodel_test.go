@@ -15,6 +15,10 @@ func TestBuildSessionRowsFlagsDisconnectCluster(t *testing.T) {
 		{Time: base.Add(20 * time.Second), Type: sessionhistory.Disconnected, ConsoleGamertag: "Three"},
 	}
 	rows := BuildSessionRows(events)
-	if rows[0].Alert != "SIMULTANEOUS DROP" || rows[1].Alert != "SIMULTANEOUS DROP" { t.Fatalf("cluster not flagged: %+v", rows) }
-	if rows[2].Alert != "" { t.Fatalf("unrelated disconnect flagged: %+v", rows[2]) }
+	if rows[0].Alert != "SIMULTANEOUS DROP" || rows[1].Alert != "SIMULTANEOUS DROP" {
+		t.Fatalf("cluster not flagged: %+v", rows)
+	}
+	if rows[2].Alert != "" {
+		t.Fatalf("unrelated disconnect flagged: %+v", rows[2])
+	}
 }

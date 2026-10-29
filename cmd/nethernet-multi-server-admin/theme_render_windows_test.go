@@ -52,7 +52,16 @@ func TestRenderMinecraftTheme(t *testing.T) {
 	}
 	time.AfterFunc(700*time.Millisecond, func() {
 		a.mw.Synchronize(func() {
-			for hwnd,skin:=range mcSkins{if skin.kind=="tabs"{for i:=0;i<skin.tabs.Pages().Len();i++{var r win.RECT;win.SendMessage(hwnd,win.TCM_GETITEMRECT,uintptr(i),uintptr(unsafe.Pointer(&r)));t.Logf("tab %d rect %+v page %+v",i,r,skin.tabs.Pages().At(i).BoundsPixels())}}};save(a.mw, "actual-server-panel.png")
+			for hwnd, skin := range mcSkins {
+				if skin.kind == "tabs" {
+					for i := 0; i < skin.tabs.Pages().Len(); i++ {
+						var r win.RECT
+						win.SendMessage(hwnd, win.TCM_GETITEMRECT, uintptr(i), uintptr(unsafe.Pointer(&r)))
+						t.Logf("tab %d rect %+v page %+v", i, r, skin.tabs.Pages().At(i).BoundsPixels())
+					}
+				}
+			}
+			save(a.mw, "actual-server-panel.png")
 			view, e := newServerProgressDialog(a.mw, "All servers")
 			if e != nil {
 				t.Error(e)

@@ -53,11 +53,12 @@ type onlinePage struct {
 	settings                                online.Settings
 	accounts                                []service.PublicAccount
 	choices                                 []service.PublicAccount
+	knownChoices                            []service.PublicAccount
 	playerModel                             onlinePlayerModel
 	players                                 *walk.TableView
 	gamertag, publicHost, preferred         *walk.LineEdit
 	subnets                                 *walk.TextEdit
-	lookupAccount, serverFilter, typeFilter *walk.ComboBox
+	lookupAccount, knownAccount, serverFilter, typeFilter *walk.ComboBox
 	creative, survival                      *walk.CheckBox
 	allowUnknownFriendsRoute                *walk.CheckBox
 	message                                 *walk.TextLabel
@@ -76,11 +77,14 @@ func (a *adminWindow) onlineTab() TabPage {
 		overview = append(overview, GroupBox{Title: strings.Title(id), Layout: VBox{}, Children: []Widget{TextLabel{AssignTo: &c.status, Text: "Disabled — load status to inspect configuration."}, CheckBox{AssignTo: &c.enabled, Text: "Enable Online Access"}, Label{Text: "Broadcaster account (authenticate through Accounts):"}, ComboBox{AssignTo: &c.account, Model: []string{"None — add a broadcaster account in Accounts"}, CurrentIndex: 0}, Label{Text: "Advertised world name:"}, LineEdit{AssignTo: &c.world}}})
 	}
 	overview = append(overview, PushButton{Text: "Save Online settings", OnClicked: p.save}, VSpacer{})
-	authorised := TabPage{Title: "Authorised Players", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Only an authenticated Xbox profile lookup can create a new managed identity. Friendship never grants access. The authenticated gateway enforces these permissions; external joining remains unverified until tested."}, TableView{AssignTo: &p.players, Model: &p.playerModel, MinSize: Size{Height: 150}, StretchFactor: 1, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Gamertag", Width: 180}, {Title: "Stable XUID", Width: 180}, {Title: "Creative", Width: 85}, {Title: "Survival", Width: 85}, {Title: "Enforcement", Width: 300}}}, Label{Text: "Gamertag to resolve:"}, LineEdit{AssignTo: &p.gamertag}, ComboBox{AssignTo: &p.lookupAccount, Model: []string{"Select an authenticated broadcaster account"}, CurrentIndex: 0}, Composite{Layout: HBox{}, Children: []Widget{CheckBox{AssignTo: &p.creative, Text: "Creative"}, CheckBox{AssignTo: &p.survival, Text: "Survival"}, HSpacer{}}}, Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Resolve and review new player...", OnClicked: p.resolve}, PushButton{Text: "Update selected permissions", OnClicked: p.updatePlayer}, PushButton{Text: "Revoke selected access", OnClicked: p.revoke}, PushButton{Text: "Remove managed record", OnClicked: p.removePlayer}}}}}
-	bar := authorised.Children[len(authorised.Children)-1].(Composite)
-	bar.Layout = VBox{MarginsZero: true}
-	bar.Children = []Widget{Composite{Layout: HBox{MarginsZero: true}, Children: bar.Children[:2]}, Composite{Layout: HBox{MarginsZero: true}, Children: bar.Children[2:]}}
-	authorised.Children[len(authorised.Children)-1] = bar
+	authorised := TabPage{Title: "Authorised Players", Layout: VBox{}, Children: []Widget{
+		TextLabel{Text: "Select an account already in Accounts, choose Creative, Survival, or both, then grant access. NetherNet automatically uses the appropriate broadcaster. Use gamertag resolution only for a new account."},
+		TableView{AssignTo: &p.players, Model: &p.playerModel, MinSize: Size{Height: 150}, StretchFactor: 1, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Gamertag", Width: 180}, {Title: "Stable XUID", Width: 180}, {Title: "Creative", Width: 85}, {Title: "Survival", Width: 85}, {Title: "Enforcement", Width: 300}}},
+		Label{Text: "Already-added Xbox account:"}, ComboBox{AssignTo: &p.knownAccount, Model: []string{"Select an authenticated account"}, CurrentIndex: 0},
+		Composite{Layout: HBox{}, Children: []Widget{CheckBox{AssignTo: &p.creative, Text: "Creative"}, CheckBox{AssignTo: &p.survival, Text: "Survival"}, PushButton{Text: "Grant selected account access", OnClicked: p.grantKnownAccount}, HSpacer{}}},
+		Composite{Layout: HBox{}, Children: []Widget{PushButton{Text: "Update selected permissions", OnClicked: p.updatePlayer}, PushButton{Text: "Revoke selected access", OnClicked: p.revoke}, PushButton{Text: "Remove managed record", OnClicked: p.removePlayer}}},
+		Label{Text: "New gamertag (only if it is not already in Accounts):"}, LineEdit{AssignTo: &p.gamertag}, ComboBox{AssignTo: &p.lookupAccount, Model: []string{"Select a broadcaster for identity lookup"}, CurrentIndex: 0}, PushButton{Text: "Resolve and review new player...", OnClicked: p.resolve},
+	}}
 	connectivity := []Widget{TextLabel{Text: "Existing LAN entries stay local. Friends connections with unknown location use the authenticated gateway only with explicit consent below. A local device choosing Friends may use the Internet/hairpin route."}, Label{Text: "Public IPv4 or hostname for the authenticated gateway:"}, LineEdit{AssignTo: &p.publicHost}, Label{Text: "Preferred LAN adapter/interface (preference only; existing LAN configuration is unchanged):"}, LineEdit{AssignTo: &p.preferred}, Label{Text: "Explicit trusted local subnets (one per line; not proof of a joining client's location):"}, TextEdit{AssignTo: &p.subnets, MinSize: Size{Height: 60}, MaxSize: Size{Height: 100}}}
 	connectivity = append(connectivity, CheckBox{AssignTo: &p.allowUnknownFriendsRoute, Text: "Allow unknown-location Friends joins through the authenticated gateway (local Friends may use Internet routing)"})
 	for _, id := range []string{"creative", "survival"} {
@@ -167,6 +171,16 @@ func (p *onlinePage) load() {
 			}
 			p.lookupAccount.SetModel(names)
 			p.lookupAccount.SetCurrentIndex(0)
+			p.knownChoices = nil
+			knownNames := []string{"Select an authenticated account"}
+			for _, a := range state.Accounts {
+				if a.XUID != "" && a.Gamertag != "" {
+					p.knownChoices = append(p.knownChoices, a)
+					knownNames = append(knownNames, a.PersonLabel+" / "+a.Gamertag)
+				}
+			}
+			p.knownAccount.SetModel(knownNames)
+			p.knownAccount.SetCurrentIndex(0)
 			p.publicHost.SetText(settings.PublicHost)
 			p.allowUnknownFriendsRoute.SetChecked(settings.AllowUnknownFriendsRoute)
 			p.preferred.SetText(settings.PreferredInterface)
@@ -216,6 +230,13 @@ func (p *onlinePage) permissions() []string {
 		ids = append(ids, "survival")
 	}
 	return ids
+}
+func (p *onlinePage) grantKnownAccount() {
+	i := p.knownAccount.CurrentIndex()
+	if i <= 0 || i > len(p.knownChoices) { p.message.SetText("Choose an already-added Xbox account."); return }
+	servers := p.permissions()
+	if len(servers) == 0 { p.message.SetText("Select Creative, Survival, or both."); return }
+	p.call("online.players.grant_account", map[string]any{"account_id": p.knownChoices[i-1].ID, "servers": servers}, nil, p.load)
 }
 func (p *onlinePage) resolve() {
 	i := p.lookupAccount.CurrentIndex()
