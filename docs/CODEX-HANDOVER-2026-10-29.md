@@ -1,6 +1,6 @@
 # Current verified status — 29 October 2026
 
-Both Creative and Survival were successfully joined by the user from a Switch on a separate internet connection. Both servers are currently Ready; both public HTTP discovery ports return the correct world and protocol 2225. Backend protection evidence matches with no blockers. All four installed executables match tested release release-20261029-232439. The Drive single-EXE installer matches SHA256 9f3e2f45f97755b49fb85e18905c7ff11e56b20eea02ca34b833957e559b4034. Codex remains installed. Earlier pending-test statements below are historical and superseded.
+Both Creative and Survival were successfully joined by the user from a Switch on a separate internet connection. Both servers are currently Ready; both public HTTP discovery ports return the correct world and protocol 2225. Backend protection evidence matches with no blockers. All four installed executables match tested release release-20261029-232928. The Drive single-EXE installer matches SHA256 75798a8885256098d1098726166f85d724e88797194ecd59b04f29eeeeb8b762. Codex remains installed. Earlier pending-test statements below are historical and superseded.
 
 Durable deliverables belong in G:\My Drive\Minecraft Server Setup; source and documentation are synchronized to GitHub branch codex/online-private-access. Only the panel shortcut remains on the Desktop. Required installed/runtime/build files remain on C:. Credentials, keys, worlds and private configuration must not enter GitHub. No known blocker remains for the reported visibility/joining issue; unauthorized-access and broader LAN regression tests were not repeated in this final check.
 
@@ -112,3 +112,9 @@ Accounts now has separate Helpers and Broadcasters sections. Helpers are expande
 The top status now reports non-helper accounts and helpers separately, followed by active players. Regression checks cover role partition/counts, default expansion, selection across sections, and collapsed selection clearing. The complete build and native UI suite passed. Installer extraction, integrity, native wizard and corrupt-payload checks passed, and Defender found no threats with protection still enabled.
 
 Release: release-20261029-232439. Drive installer SHA256: 9f3e2f45f97755b49fb85e18905c7ff11e56b20eea02ca34b833957e559b4034. Updated the installed panel only; the unchanged helper, broadcaster worker and control binaries already match this release, so neither world needed a restart. Previous panel and installer are retained in Drive Archive. User visual acceptance of this UI update remains pending; both external world joins were confirmed before this UI-only update.
+
+## Top count label rename
+
+The user requested the top status counts be named "Broadcasters" and "Players". The former non-helper/account count is now labelled Broadcasters, and the helper-account count is labelled Players. Active connected players remain separately reported as active players. Account sections retain Helpers and Broadcasters with their existing defaults. This is a display-label change only.
+
+Label update release: release-20261029-232928. Full build/native tests, installer package checks and Defender scan passed. Installed panel updated without restarting worlds. Installer SHA256: 75798a8885256098d1098726166f85d724e88797194ecd59b04f29eeeeb8b762.

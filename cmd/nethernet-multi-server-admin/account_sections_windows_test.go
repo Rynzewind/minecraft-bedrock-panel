@@ -14,7 +14,7 @@ func TestAccountCountsSeparateHelpers(t *testing.T) {
 		{ID: "h", Role: accountstore.RoleHelper}, {ID: "b", Role: accountstore.RoleBroadcaster}, {ID: "legacy"}, {ID: "u", Role: accountstore.RoleUnassigned},
 	}})
 	helpers, others := splitAccountRows(state.Accounts)
-	if len(helpers) != 2 || len(others) != 2 || !strings.Contains(state.StatusText, "2 accounts - 2 helpers") {
+	if len(helpers) != 2 || len(others) != 2 || !strings.Contains(state.StatusText, "2 Broadcasters - 2 Players") {
 		t.Fatalf("incorrect split: %+v", state)
 	}
 }

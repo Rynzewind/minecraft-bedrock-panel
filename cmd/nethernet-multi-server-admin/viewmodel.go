@@ -81,7 +81,7 @@ func BuildViewState(s service.Status) ViewState {
 		state.Players = append(state.Players, row)
 	}
 	helpers, otherAccounts := splitAccountRows(state.Accounts)
-	state.StatusText = "Server connected - " + itoa(len(otherAccounts)) + " accounts - " + itoa(len(helpers)) + " helpers - " + itoa(state.ActiveCount) + " active players"
+	state.StatusText = "Server connected - " + itoa(len(otherAccounts)) + " Broadcasters - " + itoa(len(helpers)) + " Players - " + itoa(state.ActiveCount) + " active players"
 	return state
 }
 
