@@ -3,6 +3,8 @@ package contentpacks
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -34,7 +36,18 @@ func Inspect(filename string, limits Limits) (Import, error) {
 	if err != nil {
 		return Import{}, err
 	}
-	return inspectArchiveBytes(filename, b, limits, 0)
+	in, err := inspectArchiveBytes(filename, b, limits, 0)
+	if err != nil {
+		return in, err
+	}
+	hash := sha256.Sum256(b)
+	for i := range in.Packs {
+		in.Packs[i].ImportSHA256 = hex.EncodeToString(hash[:])
+		if len(in.Packs[i].ArchiveData) == 0 {
+			in.Packs[i].ArchiveData = b
+		}
+	}
+	return in, nil
 }
 
 func inspectArchiveBytes(source string, data []byte, limits Limits, depth int) (Import, error) {

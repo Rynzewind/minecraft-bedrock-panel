@@ -62,6 +62,7 @@ func (d *Dependency) UnmarshalJSON(data []byte) error {
 }
 
 type Pack struct {
+	ImportSHA256                  string `json:"import_sha256,omitempty"`
 	Name, Description, UUID, Root string
 	Version, MinEngineVersion     [3]int
 	Type                          PackType

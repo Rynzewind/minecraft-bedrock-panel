@@ -314,6 +314,8 @@ func (m *Manager) importInspectedLocked(incomingPacks []Pack, persist bool) (res
 		if err = os.Rename(tmp, dest); err != nil {
 			return nil, err
 		}
+		p.ArchiveData = nil
+		p.SourceArchive = ""
 		stored = append(stored, StoredPack{Pack: p, InstalledPath: dest})
 	}
 	for _, incoming := range stored {

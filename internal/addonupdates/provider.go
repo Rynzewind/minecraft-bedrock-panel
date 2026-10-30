@@ -18,6 +18,10 @@ import (
 )
 
 type Project struct {
+	LatestFiles []ReleaseFile `json:"latestFiles"`
+	Links       struct {
+		WebsiteURL string `json:"websiteUrl"`
+	} `json:"links"`
 	ID                   int64 `json:"id"`
 	GameID               int64 `json:"gameId"`
 	Name, Slug           string
@@ -77,12 +81,18 @@ func newProvider(key, base string, api, cdn *http.Client) *Provider {
 	return &Provider{key: key, base: base, api: api, cdn: cdn, test: base != "https://api.curseforge.com"}
 }
 func (p *Provider) get(ctx context.Context, path string, out any) error {
-	req, e := http.NewRequestWithContext(ctx, "GET", p.base+path, nil)
+	return p.request(ctx, http.MethodGet, path, nil, out)
+}
+func (p *Provider) request(ctx context.Context, method, path string, body io.Reader, out any) error {
+	req, e := http.NewRequestWithContext(ctx, method, p.base+path, body)
 	if e != nil {
 		return fmt.Errorf("invalid provider request")
 	}
 	req.Header.Set("x-api-key", p.key)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	resp, e := p.api.Do(req)
 	if e != nil {
 		return fmt.Errorf("CurseForge request failed; check connectivity")

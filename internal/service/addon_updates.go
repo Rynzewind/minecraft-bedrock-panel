@@ -91,6 +91,8 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 			return nil, e
 		}
 		return c.addonCredentials.Status()
+	case "addons.identify.import":
+		return c.identifyImportedSource(ctx, req.Path)
 	case "addons.sources.records":
 		return c.addonSources.ListRecords()
 	}

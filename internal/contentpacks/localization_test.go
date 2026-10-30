@@ -67,3 +67,32 @@ func TestStoredLibraryReloadResolvesLocalizedName(t *testing.T) {
 		t.Fatalf("stored name=%q", got)
 	}
 }
+
+func TestImportExtractsTheInspectedBytesAndDoesNotRetainArchiveMemory(t *testing.T) {
+	archive := zipFile(t, map[string]string{"manifest.json": behaviorManifest, "original.txt": "original bytes"})
+	in, err := Inspect(archive, DefaultLimits)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Alter the source file after inspection; installation must use the inspected snapshot.
+	if err = os.WriteFile(archive, []byte("changed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := NewManager(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.mu.Lock()
+	stored, err := manager.importInspectedLocked(in.Packs, true)
+	manager.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(stored[0].InstalledPath, "original.txt"))
+	if err != nil || string(got) != "original bytes" {
+		t.Fatal("inspected archive was not used")
+	}
+	if stored[0].ImportSHA256 == "" || len(stored[0].ArchiveData) != 0 {
+		t.Fatal("provenance missing or archive memory retained")
+	}
+}

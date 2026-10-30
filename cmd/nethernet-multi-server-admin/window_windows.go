@@ -16,6 +16,7 @@ import (
 	"github.com/lxn/walk"
 	. "github.com/lxn/walk/declarative"
 	"github.com/lxn/win"
+	"nethernet-multi-server/internal/addonupdates"
 	"nethernet-multi-server/internal/adminapi"
 	"nethernet-multi-server/internal/autoupdate"
 	"nethernet-multi-server/internal/contentpacks"
@@ -593,6 +594,7 @@ func (a *adminWindow) importPack() {
 	paths := append([]string(nil), dlg.FilePaths...)
 	go func() {
 		importedFiles, importedPacks := 0, 0
+		var sourceNotes []string
 		remaining := append([]string(nil), paths...)
 		failureByPath := map[string]error{}
 		// Retry unsuccessful files after each successful pass. This allows a
@@ -614,6 +616,15 @@ func (a *adminWindow) importPack() {
 				delete(failureByPath, path)
 				importedFiles++
 				importedPacks += len(imported)
+				lookup, lookupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				var source addonupdates.ImportSourceResult
+				lookupErr := a.client.Call(lookup, "addons.identify.import", map[string]string{"Path": path}, &source)
+				lookupCancel()
+				if lookupErr != nil {
+					sourceNotes = append(sourceNotes, filepath.Base(path)+": imported; source lookup unavailable.")
+				} else if source.Message != "" {
+					sourceNotes = append(sourceNotes, filepath.Base(path)+": "+source.Message)
+				}
 				progress = true
 			}
 			remaining = retry
@@ -629,6 +640,9 @@ func (a *adminWindow) importPack() {
 		}
 		a.sync(func() {
 			message := fmt.Sprintf("Imported %d of %d file(s), containing %d pack(s).", importedFiles, len(paths), importedPacks)
+			if len(sourceNotes) > 0 {
+				message += "\r\n\r\nSources:\r\n" + strings.Join(sourceNotes, "\r\n")
+			}
 			if len(failures) > 0 {
 				message += "\r\n\r\nFailed:\r\n" + strings.Join(failures, "\r\n")
 			}
@@ -639,6 +653,9 @@ func (a *adminWindow) importPack() {
 			}
 			walk.MsgBox(a.mw, "Add-on import complete", message, icon)
 			a.refresh()
+			if a.updates != nil {
+				a.updates.loadSources()
+			}
 		})
 	}()
 }
