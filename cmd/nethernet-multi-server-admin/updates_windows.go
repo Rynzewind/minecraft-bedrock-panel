@@ -15,6 +15,10 @@ import (
 
 type updatesPage struct {
 	addonLoadGeneration             uint64
+	addonCollapsed                  [4]bool
+	customPack                      *walk.CheckBox
+	addonGroupButtons               [4]*walk.PushButton
+	addonAllRows                    []addonOverviewRow
 	keyConfigured                   bool
 	addonTable                      *walk.TableView
 	settingsCog                     *walk.PushButton

@@ -29,7 +29,11 @@ func (p *updatesPage) quickUpdateIDs(selectedOnly bool) []quickAddonRequest {
 	selected := p.selectedAddon()
 	seenProjects := map[string]bool{}
 	var out []quickAddonRequest
-	for _, row := range p.addonModel.rows {
+	rows := p.addonModel.rows
+	if !selectedOnly && p.addonAllRows != nil {
+		rows = p.addonAllRows
+	}
+	for _, row := range rows {
 		if selectedOnly && row.UUID != selected {
 			continue
 		}

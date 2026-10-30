@@ -108,6 +108,9 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 			return nil, e
 		}
 		src := rows[req.UUID]
+		if src.LocallyModified {
+			return nil, fmt.Errorf("locally modified pack is protected; review upstream changes manually")
+		}
 		key, e := c.addonCredentials.Load()
 		if e != nil {
 			_ = c.addonSources.MarkResult(req.UUID, src, e.Error())
@@ -171,6 +174,9 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 			return nil, e
 		}
 		src := rows[req.UUID]
+		if src.LocallyModified {
+			return nil, fmt.Errorf("locally modified pack is protected; review upstream changes manually")
+		}
 		if src.URL != result.Source.URL || src.ProjectID != result.Source.ProjectID || src.Channel != result.Source.Channel || src.Provider != result.Source.Provider {
 			return nil, fmt.Errorf("source changed; check again")
 		}
@@ -243,7 +249,7 @@ func (c *Controller) handleAddonUpdates(ctx context.Context, method string, raw 
 				return nil, e
 			}
 			r := rows[origin.UUID]
-			if time.Now().After(origin.Expires) || r.URL != origin.Source.URL || r.ProjectID != origin.Source.ProjectID || r.Channel != origin.Source.Channel || r.Provider != origin.Source.Provider {
+			if r.LocallyModified || time.Now().After(origin.Expires) || r.URL != origin.Source.URL || r.ProjectID != origin.Source.ProjectID || r.Channel != origin.Source.Channel || r.Provider != origin.Source.Provider {
 				return nil, fmt.Errorf("provider source changed or review expired; preview again")
 			}
 		}

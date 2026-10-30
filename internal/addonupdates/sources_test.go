@@ -23,3 +23,22 @@ func TestSourcesPersistAndRejectUnsafeURLs(t *testing.T) {
 		t.Fatal("source removal failed")
 	}
 }
+
+func TestProtectionInvalidatesInFlightVerification(t *testing.T) {
+	store := New(filepath.Join(t.TempDir(), "sources.json"))
+	before := Source{Provider: "curseforge", ProjectID: 1, Channel: "stable"}
+	if err := store.SaveRecord("pack", before); err != nil {
+		t.Fatal(err)
+	}
+	after := before
+	after.LocallyModified = true
+	if err := store.SaveRecord("pack", after); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkResult("pack", before, "late API result", 123); err == nil {
+		t.Fatal("stale check ignored protection change")
+	}
+	if err := store.MarkVerified("pack", before, 123, [3]int{2, 0, 0}); err == nil {
+		t.Fatal("protected pack became verified")
+	}
+}

@@ -72,6 +72,12 @@ func NewManager(root string, servers []config.Server) (*Manager, error) {
 		m.state.PendingResourcePolicy = map[string]bool{}
 	}
 	if err == nil {
+		for i := range m.state.Packs {
+			localizeStoredPack(&m.state.Packs[i])
+		}
+		for i := range m.state.Versions {
+			localizeStoredPack(&m.state.Versions[i])
+		}
 		err = m.ensureVersions()
 	}
 	return m, err

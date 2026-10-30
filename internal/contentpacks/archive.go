@@ -80,6 +80,7 @@ func inspectArchiveBytes(source string, data []byte, limits Limits, depth int) (
 			if seen[p.UUID] {
 				return Import{}, fmt.Errorf("duplicate pack UUID %s", p.UUID)
 			}
+			localizeArchivePack(&p, z)
 			seen[p.UUID] = true
 			out.Packs = append(out.Packs, p)
 		}

@@ -6,6 +6,8 @@ import (
 	. "github.com/lxn/walk/declarative"
 	"nethernet-multi-server/internal/addonupdates"
 	"nethernet-multi-server/internal/contentpacks"
+	"sort"
+	"strings"
 )
 
 type addonOverviewRow struct{ UUID, Name, Type, Library, Creative, Survival, Status, Checked string }
@@ -51,7 +53,13 @@ func addonStatusColor(status string) walk.Color {
 func (p *updatesPage) addonsTab() TabPage {
 	return TabPage{Title: "Add-ons", Layout: VBox{}, Children: []Widget{
 		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{TextLabel{Text: "Installed add-ons", StretchFactor: 1}, PushButton{AssignTo: &p.quickUpdate, Text: "Update selected...", ToolTipText: "Download, verify and stage the selected red add-on", OnClicked: p.quickUpdateSelected}, PushButton{AssignTo: &p.quickUpdateAll, Text: "Update all verified...", ToolTipText: "Download, verify and stage every red add-on with a confirmed source", OnClicked: p.quickUpdateAllVerified}, PushButton{Text: "Check selected", OnClicked: p.checkAddon}, PushButton{Text: "Check all linked", OnClicked: p.checkAllAddons}, PushButton{Text: "Refresh", OnClicked: p.loadSources}, PushButton{AssignTo: &p.settingsCog, Text: "⚙ Settings", ToolTipText: "API key, source links, manual reviews and staging", OnClicked: p.openAddonSettings}}},
-		TextLabel{Text: "Green: up to date • Red: outdated • Amber: unknown. Checks verify source manifests without installing anything. Last-check evidence expires after 24 hours."},
+		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
+			PushButton{AssignTo: &p.addonGroupButtons[0], Text: "Up to date (0)", OnClicked: func() { p.toggleAddonGroup(0) }},
+			PushButton{AssignTo: &p.addonGroupButtons[1], Text: "Unknown (0)", OnClicked: func() { p.toggleAddonGroup(1) }},
+			PushButton{AssignTo: &p.addonGroupButtons[2], Text: "Out of date (0)", OnClicked: func() { p.toggleAddonGroup(2) }},
+			PushButton{AssignTo: &p.addonGroupButtons[3], Text: "Custom / protected (0)", OnClicked: func() { p.toggleAddonGroup(3) }},
+		}},
+		TextLabel{Text: "Green: up to date • Red: outdated • Amber: unknown. Custom / protected packs require manual review. Use the group buttons to expand or collapse results. Checks verify source manifests without installing anything. Last-check evidence expires after 24 hours."},
 		TableView{AssignTo: &p.addonTable, Model: &p.addonModel, StretchFactor: 1, MinSize: Size{Height: 160}, AlternatingRowBG: true, LastColumnStretched: true, Columns: []TableViewColumn{{Title: "Add-on", Width: 290}, {Title: "Type", Width: 80}, {Title: "Library", Width: 90}, {Title: "Creative", Width: 140}, {Title: "Survival", Width: 140}, {Title: "Update status", Width: 120}, {Title: "Last checked", Width: 150}}},
 		TextEdit{AssignTo: &p.addonLog, ReadOnly: true, MinSize: Size{Height: 55}, MaxSize: Size{Height: 85}, Text: "Select a pack to check its source. Configure sources and manual reviews using the cogwheel."},
 	}}
@@ -94,14 +102,33 @@ func (p *updatesPage) renderAddonOverview(selected string) {
 		}
 		rows = append(rows, addonOverviewRow{pack.UUID, pack.Name, string(pack.Type), versionText(pack.Version), values["creative"], values["survival"], addonupdates.OverviewStatus(pack.Version, states, source), checked})
 	}
+	sortAddonOverviewRows(rows)
+	p.addonAllRows = rows
+	var counts [4]int
+	for _, row := range rows {
+		counts[addonResultGroup(row.Status)]++
+	}
+	labels := []string{"Up to date", "Unknown", "Out of date", "Custom / protected"}
+	for i, button := range p.addonGroupButtons {
+		if button != nil {
+			state := "Hide"
+			if p.addonCollapsed[i] {
+				state = "Show"
+			}
+			button.SetText(fmt.Sprintf("%s %s (%d)", state, labels[i], counts[i]))
+		}
+	}
+	rows = visibleAddonRows(rows, p.addonCollapsed)
 	p.addonModel.set(rows)
 	if p.addonTable != nil {
+		restored := -1
 		for i, r := range rows {
 			if r.UUID == selected {
-				p.addonTable.SetCurrentIndex(i)
+				restored = i
 				break
 			}
 		}
+		p.addonTable.SetCurrentIndex(restored)
 	}
 }
 func (p *updatesPage) refreshAddonOverview() {
@@ -176,6 +203,7 @@ func (p *updatesPage) openAddonSettings() {
 	dlg.Dispose()
 	p.settingsDialog = nil
 	p.apiKey = nil
+	p.customPack = nil
 	p.projectID = nil
 	p.notes = nil
 	p.keyInfo = nil
@@ -218,4 +246,56 @@ func (m *addonOverviewModel) set(rows []addonOverviewRow) {
 			m.PublishRowChanged(i)
 		}
 	}
+}
+
+func sortAddonOverviewRows(rows []addonOverviewRow) {
+	rank := func(status string) int {
+		switch status {
+		case "Up to date":
+			return 0
+		case "Outdated":
+			return 2
+		case "Custom / protected":
+			return 3
+		default:
+			return 1
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		a, b := rank(rows[i].Status), rank(rows[j].Status)
+		if a != b {
+			return a < b
+		}
+		if strings.ToLower(rows[i].Name) != strings.ToLower(rows[j].Name) {
+			return strings.ToLower(rows[i].Name) < strings.ToLower(rows[j].Name)
+		}
+		return rows[i].UUID < rows[j].UUID
+	})
+}
+
+func addonResultGroup(status string) int {
+	switch status {
+	case "Up to date":
+		return 0
+	case "Outdated":
+		return 2
+	case "Custom / protected":
+		return 3
+	default:
+		return 1
+	}
+}
+func visibleAddonRows(rows []addonOverviewRow, collapsed [4]bool) []addonOverviewRow {
+	visible := make([]addonOverviewRow, 0, len(rows))
+	for _, row := range rows {
+		if !collapsed[addonResultGroup(row.Status)] {
+			visible = append(visible, row)
+		}
+	}
+	return visible
+}
+func (p *updatesPage) toggleAddonGroup(index int) {
+	selected := p.selectedAddon()
+	p.addonCollapsed[index] = !p.addonCollapsed[index]
+	p.renderAddonOverview(selected)
 }

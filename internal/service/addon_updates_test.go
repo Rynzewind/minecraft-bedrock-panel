@@ -153,3 +153,33 @@ func (p *overviewProvider) Download(context.Context, addonupdates.Project, addon
 	f.Close()
 	return path, nil
 }
+
+func TestLocallyModifiedSourceBlocksCachedDownloadAndStage(t *testing.T) {
+	root := t.TempDir()
+	sources := addonupdates.New(filepath.Join(root, "sources.json"))
+	src := addonupdates.Source{LocallyModified: true, Provider: "curseforge", ProjectID: 42, Channel: "stable"}
+	if err := sources.SaveRecord("id", src); err != nil {
+		t.Fatal(err)
+	}
+	packs := &customProtectedPacks{}
+	c := &Controller{packs: packs}
+	c.SetAddonSources(sources)
+	c.SetAddonUpdates(addonupdates.NewCredentials(filepath.Join(root, "key.json"), plainProtector{}), "", root)
+	c.addonResults["id"] = addonCheckResult{UUID: "id", Source: src, Checked: time.Now()}
+	c.addonOrigins["review"] = addonOrigin{UUID: "id", Source: src, Expires: time.Now().Add(time.Minute)}
+	for _, req := range []struct{ method, body string }{{"addons.check", `{"UUID":"id"}`}, {"addons.download", `{"UUID":"id","FileID":1}`}, {"addons.stage", `{"PreviewID":"review"}`}} {
+		_, err := c.Handle(context.Background(), req.method, json.RawMessage(req.body))
+		if err == nil {
+			t.Fatalf("custom pack allowed %s", req.method)
+		}
+		if req.method != "addons.stage" && !strings.Contains(err.Error(), "locally modified") {
+			t.Fatalf("unexpected rejection: %v", err)
+		}
+	}
+}
+
+type customProtectedPacks struct{ provenancePacks }
+
+func (*customProtectedPacks) InventoryState() []contentpacks.InventoryItem {
+	return []contentpacks.InventoryItem{{StoredPack: contentpacks.StoredPack{Pack: contentpacks.Pack{UUID: "id"}}}}
+}

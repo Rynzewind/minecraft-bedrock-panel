@@ -27,6 +27,7 @@ func (p *updatesPage) addonSettingsTab() TabPage {
 		Label{Text: "Official HTTPS project page:"}, LineEdit{AssignTo: &p.source},
 		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{Label{Text: "CurseForge project ID (optional):"}, LineEdit{AssignTo: &p.projectID}, Label{Text: "Release channel:"}, ComboBox{AssignTo: &p.channel, Model: []string{"stable", "beta", "alpha"}, CurrentIndex: 0}}},
 		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{PushButton{Text: "Save source", OnClicked: p.saveSource}, PushButton{Text: "Open source", OnClicked: p.openSource}, PushButton{Text: "Reload add-ons", OnClicked: p.loadSources}}},
+		CheckBox{AssignTo: &p.customPack, Text: "Protect locally modified pack from API updates"},
 		Label{Text: "Manual review notes (does not prove the installed version is current):"}, LineEdit{AssignTo: &p.notes},
 		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{PushButton{Text: "Record manual check", OnClicked: p.manualChecked}, PushButton{Text: "Check selected source", OnClicked: p.checkAddon}, PushButton{Text: "Check all linked sources", OnClicked: p.checkAllAddons}}},
 		ComboBox{AssignTo: &p.releases, Model: []string{"Check a CurseForge source to list releases"}, CurrentIndex: 0},
@@ -169,6 +170,9 @@ func (p *updatesPage) selectPack() {
 		return
 	}
 	r := p.records[id]
+	if p.customPack != nil {
+		p.customPack.SetChecked(r.LocallyModified)
+	}
 	p.source.SetText(r.URL)
 	p.notes.SetText(r.Notes)
 	pid := ""
@@ -217,6 +221,9 @@ func (p *updatesPage) saveSource() {
 	r := p.records[id]
 	r.URL = strings.TrimSpace(p.source.Text())
 	r.Notes = p.notes.Text()
+	if p.customPack != nil {
+		r.LocallyModified = p.customPack.Checked()
+	}
 	r.Channel = []string{"stable", "beta", "alpha"}[p.channel.CurrentIndex()]
 	r.Provider = "manual"
 	r.ProjectID = 0

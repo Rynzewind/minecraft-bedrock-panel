@@ -65,3 +65,11 @@ func TestSourceIdentityChangeClearsOverviewEvidence(t *testing.T) {
 		t.Fatal("stale verification accepted")
 	}
 }
+
+func TestCustomSourceOverridesVerifiedStatus(t *testing.T) {
+	v := [3]int{2, 0, 0}
+	s := Source{LocallyModified: true, LatestCheckOK: true, LatestFileID: 1, VerifiedFileID: 1, VerifiedVersion: &v, LastChecked: time.Now()}
+	if got := OverviewStatus([3]int{1, 0, 0}, nil, s); got != "Custom / protected" {
+		t.Fatalf("got %s", got)
+	}
+}

@@ -8,6 +8,9 @@ type VersionState struct {
 }
 
 func OverviewStatus(library [3]int, deployed []VersionState, s Source) string {
+	if s.LocallyModified {
+		return "Custom / protected"
+	}
 	if !s.LatestCheckOK || s.LatestFileID <= 0 || s.VerifiedFileID != s.LatestFileID || s.VerifiedVersion == nil || s.LastChecked.IsZero() || time.Since(s.LastChecked) > 24*time.Hour {
 		return "Unknown"
 	}

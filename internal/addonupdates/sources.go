@@ -13,6 +13,7 @@ import (
 )
 
 type Source struct {
+	LocallyModified bool      `json:"locally_modified,omitempty"`
 	LatestCheckOK   bool      `json:"latest_check_ok,omitempty"`
 	LatestFileID    int64     `json:"latest_file_id,omitempty"`
 	VerifiedFileID  int64     `json:"verified_file_id,omitempty"`
@@ -148,7 +149,13 @@ func (s *Store) SaveRecord(id string, r Source) error {
 	if e != nil {
 		return e
 	}
-	if old, ok := rows[id]; ok && (old.URL != r.URL || old.Provider != r.Provider || old.ProjectID != r.ProjectID || old.Channel != r.Channel) {
+	if old, ok := rows[id]; ok && (old.LocallyModified != r.LocallyModified || old.URL != r.URL || old.Provider != r.Provider || old.ProjectID != r.ProjectID || old.Channel != r.Channel) {
+		r.LatestCheckOK = false
+		r.LatestFileID = 0
+		r.VerifiedFileID = 0
+		r.VerifiedVersion = nil
+	}
+	if r.LocallyModified {
 		r.LatestCheckOK = false
 		r.LatestFileID = 0
 		r.VerifiedFileID = 0
@@ -228,7 +235,7 @@ func (s *Store) MarkResult(id string, expected Source, state string, latest ...i
 		return e
 	}
 	r := rows[id]
-	if r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel {
+	if r.LocallyModified || r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel {
 		return fmt.Errorf("source changed while checking; check again")
 	}
 	r.LastChecked = time.Now().UTC()
@@ -258,7 +265,7 @@ func (s *Store) Acknowledge(id string, expected Source, projectID, fileID int64)
 		return e
 	}
 	r := rows[id]
-	if r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel {
+	if r.LocallyModified || r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel {
 		return fmt.Errorf("source changed; staged archive provenance was not saved")
 	}
 	r.ProjectID = projectID
@@ -279,7 +286,7 @@ func (s *Store) MarkVerified(id string, expected Source, fileID int64, version [
 		return e
 	}
 	r := rows[id]
-	if r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel || !r.LatestCheckOK || r.LatestFileID != fileID {
+	if r.LocallyModified || r.URL != expected.URL || r.Provider != expected.Provider || r.ProjectID != expected.ProjectID || r.Channel != expected.Channel || !r.LatestCheckOK || r.LatestFileID != fileID {
 		return fmt.Errorf("source changed during release verification")
 	}
 	r.VerifiedFileID = fileID
