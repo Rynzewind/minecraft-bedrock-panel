@@ -201,3 +201,27 @@ func TestStartupReadinessSurvivesLogTruncationAndResetsOnRestart(t *testing.T) {
 		t.Fatal("old readiness leaked into new process")
 	}
 }
+
+func TestAutomaticStopRefusesConnectedPlayerWithoutChangingState(t *testing.T) {
+	p := &fakeProcess{done: make(chan error, 1)}
+	m := New([]config.Server{configuredServer()}, fakeFactory{p: p}, Options{})
+	if err := m.Start(context.Background(), "creative"); err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.servers["creative"].status.Players = 1
+	m.mu.Unlock()
+	if err := m.StopIfEmpty(context.Background(), "creative"); err == nil {
+		t.Fatal("automatic stop allowed player")
+	}
+	if m.Status("creative").State != Running {
+		t.Fatal("state changed on refused stop")
+	}
+	p.mu.Lock()
+	writes := p.writes
+	p.mu.Unlock()
+	if writes != "" {
+		t.Fatal("stop command sent")
+	}
+	p.done <- nil
+}

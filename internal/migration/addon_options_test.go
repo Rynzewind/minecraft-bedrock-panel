@@ -88,3 +88,18 @@ func TestFullAddonRestorePreservesDisabledPacksAndServerSelections(t *testing.T)
 		t.Fatal("old addon paths survived restore")
 	}
 }
+
+func TestAutomaticUpdatePreferenceTravelsWithSnapshots(t *testing.T) {
+	root := fixture(t)
+	put(t, root, "MultiServer/automatic-updates.json", `{"servers":true,"addons":false}`)
+	files, err := BuildInventoryWithOptions(root, t.TempDir(), SnapshotOptions{IncludeAddons: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		if file.Path == "MultiServer/automatic-updates.json" {
+			return
+		}
+	}
+	t.Fatal("automatic update preference missing from snapshot inventory")
+}

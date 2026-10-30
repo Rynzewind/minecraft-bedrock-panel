@@ -9,6 +9,7 @@ import (
 	"nethernet-multi-server/internal/accountstore"
 	"nethernet-multi-server/internal/addonupdates"
 	"nethernet-multi-server/internal/adminapi"
+	"nethernet-multi-server/internal/autoupdate"
 	"nethernet-multi-server/internal/contentpacks"
 	"nethernet-multi-server/internal/online"
 	"nethernet-multi-server/internal/serversettings"
@@ -35,6 +36,7 @@ type pendingEnrollment struct {
 	accountID  string
 }
 type Controller struct {
+	automatic                     *autoupdate.Store
 	onlineAuthenticationReset     func(string)
 	onlineRuntimeStatus           func([]online.Status) []online.Status
 	onlineRuntimeChanged          func()
@@ -119,6 +121,9 @@ type coded struct{ code, msg string }
 func (e coded) Error() string { return e.msg }
 func (e coded) Code() string  { return e.code }
 func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (any, error) {
+	if method == "updates.auto.get" || method == "updates.auto.save" {
+		return c.handleAutomaticSettings(raw, method == "updates.auto.save")
+	}
 	if !migrationReadMethod(method) {
 		c.operationMu.Lock()
 		defer c.operationMu.Unlock()

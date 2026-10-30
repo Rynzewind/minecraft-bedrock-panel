@@ -17,6 +17,7 @@ import (
 	. "github.com/lxn/walk/declarative"
 	"github.com/lxn/win"
 	"nethernet-multi-server/internal/adminapi"
+	"nethernet-multi-server/internal/autoupdate"
 	"nethernet-multi-server/internal/contentpacks"
 	"nethernet-multi-server/internal/online"
 	"nethernet-multi-server/internal/serversettings"
@@ -300,11 +301,14 @@ func (a *adminWindow) refresh() {
 		var storedPacks []contentpacks.InventoryItem
 		var sessionEvents []sessionhistory.Event
 		var onlineStatuses []online.Status
+		var automatic autoupdate.Settings
+		var automaticErr error
 		if err == nil {
 			err = a.client.Call(ctx, "servers.list", struct{}{}, &serverStatuses)
 			_ = a.client.Call(ctx, "packs.list", struct{}{}, &storedPacks)
 			_ = a.client.Call(ctx, "sessions.list", map[string]int{"limit": 1000}, &sessionEvents)
 			_ = a.client.Call(ctx, "online.status", struct{}{}, &onlineStatuses)
+			automaticErr = a.client.Call(ctx, "updates.auto.get", struct{}{}, &automatic)
 		}
 		if a.closed.Load() || seq != a.refreshSeq.Load() {
 			return
@@ -317,6 +321,9 @@ func (a *adminWindow) refresh() {
 			selectedAccountID, selectedPlayerXUID, selectedServerID, selectedPackUUIDs := a.selectedStableIDs()
 			a.lastError = ""
 			a.state = BuildViewState(status)
+			if a.updates != nil && automaticErr == nil {
+				a.updates.applyAutomatic(automatic)
+			}
 			a.status.SetText(a.state.StatusText)
 			a.serverSummary.SetText(fmt.Sprintf("Creative: %d  |  Survival: %d  |  Active: %d", a.state.CreativeActive, a.state.SurvivalActive, a.state.ActiveCount))
 			helpers, broadcasters := splitAccountRows(a.state.Accounts)

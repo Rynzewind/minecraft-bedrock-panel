@@ -213,7 +213,9 @@ func (m *Manager) fail(s *managed, err error) {
 	s.status.Phase = "failed"
 	s.status.LastError = err.Error()
 }
-func (m *Manager) Stop(ctx context.Context, id string) error {
+func (m *Manager) Stop(ctx context.Context, id string) error        { return m.stop(ctx, id, false) }
+func (m *Manager) StopIfEmpty(ctx context.Context, id string) error { return m.stop(ctx, id, true) }
+func (m *Manager) stop(ctx context.Context, id string, onlyEmpty bool) error {
 	m.mu.Lock()
 	s := m.servers[id]
 	if s == nil {
@@ -224,6 +226,10 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 		state := s.status.State
 		m.mu.Unlock()
 		return fmt.Errorf("server %s is %s", id, state)
+	}
+	if onlyEmpty && s.status.Players > 0 {
+		m.mu.Unlock()
+		return errors.New("players joined; automatic stop postponed")
 	}
 	if s.announcementPending {
 		m.mu.Unlock()
@@ -248,7 +254,7 @@ func (m *Manager) Stop(ctx context.Context, id string) error {
 		return ctx.Err()
 	case <-timer.C:
 		m.mu.Lock()
-		if s.status.State == Stopping {
+		if s.status.State == Stopping && !onlyEmpty {
 			s.status.State = Running
 			s.status.Phase = "running"
 		}

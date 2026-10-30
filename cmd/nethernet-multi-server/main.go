@@ -128,6 +128,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	controller.SetAddonSources(addonupdates.New(filepath.Join(installationRoot, "MultiServer", "addon-update-sources.json")))
 	controller.SetAddonUpdates(addonupdates.NewCredentials(filepath.Join(installationRoot, "MultiServer", "provider-credentials", "curseforge.json"), accountstore.DPAPIProtector{Entropy: []byte("NetherNet.CurseForge.v1")}), configPath, filepath.Join(installationRoot, "MultiServer", "addon-downloads"))
 	controller.SetUpdates(serverupdate.New(installationRoot, configPath, serverManager))
+	if e := controller.SetAutomaticUpdates(filepath.Join(installationRoot, "MultiServer", "automatic-updates.json")); e != nil {
+		fmt.Fprintln(stderr, "Automatic updates disabled: saved settings could not be loaded.")
+	}
 	controller.SetMigration(migration.NewManager(installationRoot, serverManager, func() ([]byte, error) {
 		s := accountManager.Snapshot()
 		return migration.ExportAccounts(accountstore.Snapshot{Version: accountstore.CurrentVersion, Accounts: s.Accounts, Players: s.Players})
@@ -159,6 +162,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if !waitForManagedNetwork(ctx, cfg, stdout) {
 		return 0
 	}
+	go controller.RunAutomaticUpdates(ctx)
 	advertisements := make([]lan.Advertisement, 0, len(cfg.Servers))
 	for i, server := range cfg.Servers {
 		networkID, err := server.ParsedNetworkID()

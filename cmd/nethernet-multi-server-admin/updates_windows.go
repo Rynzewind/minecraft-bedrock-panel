@@ -14,6 +14,9 @@ import (
 )
 
 type updatesPage struct {
+	autoServers, autoAddons         *walk.CheckBox
+	autoMessage                     *walk.TextLabel
+	autoApplying, autoSaving        bool
 	addonLoadGeneration             uint64
 	addonCollapsed                  [4]bool
 	customPack                      *walk.CheckBox
@@ -54,7 +57,14 @@ func (a *adminWindow) updatesTab() TabPage {
 	a.updates = p
 	servers := TabPage{Title: "Servers", Layout: VBox{}, Children: []Widget{TextLabel{Text: "Update both servers together. Worlds, add-ons, accounts and settings are backed up and preserved."}, Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{PushButton{AssignTo: &p.check, Text: "Check for updates", OnClicked: p.checkUpdates}, PushButton{AssignTo: &p.install, Text: "Update servers...", Enabled: false, OnClicked: p.start}, PushButton{AssignTo: &p.backup, Text: "Open backup", Enabled: false, OnClicked: p.openBackup}, PushButton{AssignTo: &p.recover, Text: "Recover backup...", Enabled: false, OnClicked: p.restore}}}, TextEdit{AssignTo: &p.summary, ReadOnly: true, MinSize: Size{Height: 140}, StretchFactor: 1, Text: "Check for the latest official stable release. Updates run only when everyone has left the servers.\r\nFuture releases need matching NetherNet protocol support."}}}
 	addons := p.addonsTab()
-	return TabPage{Title: "Updates", Layout: VBox{MarginsZero: true}, Children: []Widget{TabWidget{AssignTo: &p.tabs, Pages: []TabPage{scrollableAdminPage(servers), scrollableAdminPage(addons)}}}}
+	return TabPage{Title: "Updates", Layout: VBox{MarginsZero: true}, Children: []Widget{
+		Composite{Layout: HBox{MarginsZero: true}, Children: []Widget{
+			CheckBox{AssignTo: &p.autoServers, Text: "Automatic server updates", Enabled: false, OnCheckedChanged: func() { p.saveAutomatic(true) }},
+			CheckBox{AssignTo: &p.autoAddons, Text: "Automatic add-on updates", Enabled: false, OnCheckedChanged: func() { p.saveAutomatic(false) }},
+		}},
+		TextLabel{Text: "Checks every 15 minutes after both worlds have been empty for five minutes. Updates keep backups. Custom packs stay manual."},
+		TextLabel{AssignTo: &p.autoMessage, Text: "Loading automatic update settings..."},
+		TabWidget{AssignTo: &p.tabs, Pages: []TabPage{scrollableAdminPage(servers), scrollableAdminPage(addons)}}}}
 }
 func (p *updatesPage) showError(e error) { p.summary.SetText(e.Error()) }
 func (p *updatesPage) checkUpdates() {

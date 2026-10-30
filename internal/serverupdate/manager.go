@@ -371,16 +371,46 @@ func (m *Manager) apply(ctx context.Context, r Release, data []byte) (err error)
 				}
 			}
 		} else {
+			recovery, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
 			for _, id := range stopped {
-				_ = m.s.Start(context.Background(), id)
+				for {
+					state := supervisor.Unconfigured
+					for _, status := range m.s.Statuses() {
+						if status.ID == id {
+							state = status.State
+						}
+					}
+					if state == supervisor.Stopping {
+						select {
+						case <-recovery.Done():
+							err = errors.Join(err, fmt.Errorf("%s did not finish stopping", id))
+						case <-time.After(25 * time.Millisecond):
+							continue
+						}
+						break
+					}
+					if state == supervisor.Stopped || state == supervisor.Failed {
+						if startErr := m.s.Start(recovery, id); startErr != nil {
+							err = errors.Join(err, startErr)
+						}
+					}
+					break
+				}
 			}
 		}
 	}()
 	for _, id := range running {
-		if e = m.s.Stop(ctx, id); e != nil {
+		stopped = append(stopped, id)
+		stop := m.s.Stop
+		if empty, ok := m.s.(interface {
+			StopIfEmpty(context.Context, string) error
+		}); ok {
+			stop = empty.StopIfEmpty
+		}
+		if e = stop(ctx, id); e != nil {
 			return e
 		}
-		stopped = append(stopped, id)
 	}
 	for _, s := range m.s.Statuses() {
 		if s.State != supervisor.Stopped && s.State != supervisor.Failed {
